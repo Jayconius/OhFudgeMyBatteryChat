@@ -15,8 +15,10 @@
 
 Shows your headset, controllers, and trackers' battery live on stream, with
 pop-in alerts when something's running low - as a normal OBS Browser Source.
-Not streaming? Just click **Open in Browser** in the app for a personal
-low-battery alarm, no OBS needed.
+
+> [!TIP]
+> **Not streaming?** You don't need OBS at all - click **Open in Browser**
+> in the app and use it as a standalone personal low-battery alarm.
 
 ## Quick start
 
