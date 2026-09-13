@@ -9,6 +9,8 @@
 
 *A SteamVR battery overlay for OBS - so chat can finally remind you.*
 
+🌐 **English** | [Deutsch](README.de.md) | [Français](README.fr.md) | [Español](README.es.md) | [日本語](README.ja.md)
+
 ![Screenshot](docs/screenshot.png)
 
 </div>
