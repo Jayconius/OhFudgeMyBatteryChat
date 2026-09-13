@@ -29,6 +29,14 @@ That's it - no Python or extra installs needed, the exe is self-contained.
 
 ## How-to guides
 
+> [!NOTE]
+> **Some devices only report battery in chunks, not continuously.** A
+> handful of trackers in particular may show **"n/a"** until they've been
+> power-cycled, or until the battery actually gets low. That's the
+> device's own driver, not a bug in this app - see it show real data for
+> anything else, and it'll show real data for that device too the moment
+> its driver decides to report it.
+
 <details>
 <summary><strong>Adding a Device (a live battery readout)</strong></summary>
 
