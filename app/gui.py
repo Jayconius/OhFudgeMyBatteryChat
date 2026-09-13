@@ -222,6 +222,11 @@ class AboutDialog(tk.Toplevel):
 
         self.grab_set()
         self.transient(parent)
+        # transient() re-parents the window at the Win32 level (makes this
+        # dialog "owned" by parent) - that resets the DWM dark-titlebar
+        # attribute applied earlier, so it must be re-applied after this,
+        # not just once at the top.
+        theme.apply_window_theme(self, getattr(parent, "dark_mode", False))
         self.deiconify()
 
     def _toggle_check_updates(self):
@@ -266,6 +271,9 @@ class FirstRunNoticeDialog(tk.Toplevel):
         self.protocol("WM_DELETE_WINDOW", self._on_ok)
         self.grab_set()
         self.transient(parent)
+        # transient() re-parents the window at the Win32 level, which resets
+        # the DWM dark-titlebar attribute applied earlier - reapply after.
+        theme.apply_window_theme(self, getattr(parent, "dark_mode", False))
         self.deiconify()
 
     def _build_body(self):
@@ -637,6 +645,9 @@ class ItemEditorDialog(DeviceSelectorMixin, MediaPickerMixin, AnimationPickerMix
         self.protocol("WM_DELETE_WINDOW", self._on_cancel)
         self.grab_set()
         self.transient(parent)
+        # transient() re-parents the window at the Win32 level, which resets
+        # the DWM dark-titlebar attribute applied earlier - reapply after.
+        theme.apply_window_theme(self, getattr(parent, "dark_mode", False))
         self.deiconify()
 
     def _build(self):
@@ -1036,6 +1047,9 @@ class EffectEditorDialog(DeviceSelectorMixin, MediaPickerMixin, AnimationPickerM
         self.protocol("WM_DELETE_WINDOW", self._on_cancel)
         self.grab_set()
         self.transient(parent)
+        # transient() re-parents the window at the Win32 level, which resets
+        # the DWM dark-titlebar attribute applied earlier - reapply after.
+        theme.apply_window_theme(self, getattr(parent, "dark_mode", False))
         self.deiconify()
 
     def _build(self):
@@ -1358,6 +1372,9 @@ class MainWindow(tk.Tk):
         link.bind("<Button-1>", lambda e: webbrowser.open(url))
         ttk.Button(frm, text=i18n.t_piqad("about_close"), command=dlg.destroy).pack(anchor="e", pady=(14, 0))
         dlg.transient(self)
+        # transient() re-parents the window at the Win32 level, which resets
+        # the DWM dark-titlebar attribute applied earlier - reapply after.
+        theme.apply_window_theme(dlg, self.dark_mode)
         dlg.deiconify()
 
     # -- UI -----------------------------------------------------------
