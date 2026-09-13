@@ -38,6 +38,23 @@ That's it - no Python or extra installs needed, the exe is self-contained.
 > its driver decides to report it.
 
 <details>
+<summary><strong>Adding the OBS Browser Source</strong></summary>
+
+1. In OBS: **Sources > + > Browser Source**, give it a name, click OK.
+2. Paste in the URL shown at the top of the app (default
+   `http://127.0.0.1:8710/overlay`).
+3. Set **Width** to `1920` and **Height** to `1080`. Item *positions* scale
+   to any canvas size fine, but item *sizes* are calibrated against this
+   1920x1080 reference in the position editor - match it so things look
+   the same size as you previewed them, not bigger or smaller.
+4. Leave **"Shutdown source when not visible"** unchecked if you want
+   low-battery alerts to keep working while that scene isn't on screen.
+5. If a warning sound doesn't play, check this source's **"Control audio
+   via OBS"** option - some OBS versions gate autoplay audio behind it.
+
+</details>
+
+<details>
 <summary><strong>Adding a Device (a live battery readout)</strong></summary>
 
 1. Click **Add > Add Device**.
