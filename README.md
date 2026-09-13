@@ -27,6 +27,47 @@ pop-in alerts when something's running low - as a normal OBS Browser Source.
 
 That's it - no Python or extra installs needed, the exe is self-contained.
 
+## How-to guides
+
+<details>
+<summary><strong>Adding a Device (a live battery readout)</strong></summary>
+
+1. Click **Add > Add Device**.
+2. Pick the device from the list on the left (click **Refresh** if it's not
+   showing yet).
+3. Give it a label and a low-battery threshold (%).
+4. Choose **Always visible** (icon stays put, just swaps picture when low)
+   or **Hidden until low** (pops in only once it's low).
+5. **Pictures & Sound**: pick a normal picture and a low-battery picture,
+   and a warning sound - or skip any of these to use the built-in defaults.
+6. **Animation**: if you chose "Hidden until low," pick how it pops in and
+   out, and try it with **Test Animation** before saving.
+7. **Placement**: drag it into position on the preview canvas - it snaps
+   to align with anything else you've already placed.
+8. Click **Save**.
+
+</details>
+
+<details>
+<summary><strong>Adding an Overlay Effect (a standalone alert)</strong></summary>
+
+1. Click **Add > Add Overlay Effect**.
+2. **Target**: a **Specific Device**, or **All Devices** (optionally
+   excluding a few from the multi-select list).
+3. **Trigger**: Battery Low, Battery Normal, Device Disconnected, or Device
+   Connected.
+4. **Picture & Sound**: pick an image (or GIF/video) and a sound for the
+   alert, or leave either blank to use the defaults.
+5. **Caption Text** (optional): type a message, then set its position
+   relative to the picture, font, size, color, an outline, and a wobble/
+   shake/pulse animation.
+6. **Animation**: pick how the alert pops in and out, and try it with
+   **Test Animation** before saving.
+7. **Placement**: drag it into position - same snap-to-align as Devices.
+8. Click **Save**.
+
+</details>
+
 ## Features
 
 - Live battery % for any SteamVR device, with a low-battery pop-in alert
