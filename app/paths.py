@@ -68,6 +68,16 @@ def config_path() -> str:
     return os.path.join(app_data_dir(), "config.json")
 
 
+def fake_signal_path() -> str:
+    """A small heartbeat file an external tool (see tools/fake_vr_signal_
+    simulator.py) can write fake device data to - VRMonitor uses it in place
+    of real OpenVR data whenever it exists and was updated recently, so a
+    separate, already-running app can feed the real app fake devices for
+    demos/testing without any special launch order or extra flags, as long
+    as both share this same Data folder."""
+    return os.path.join(app_data_dir(), "fake_vr_signal.json")
+
+
 def bundled_resource(relative_path: str) -> str:
     """Resolve a path to a resource bundled into the PyInstaller onefile exe."""
     base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))

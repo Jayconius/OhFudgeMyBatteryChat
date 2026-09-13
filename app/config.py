@@ -65,6 +65,11 @@ NUDGE_DIRECTION_OPTIONS = {
     "up": "Up",
     "down": "Down",
 }
+THEME_OPTIONS = {
+    "system": "Match System",
+    "light": "Light",
+    "dark": "Dark",
+}
 
 
 @dataclasses.dataclass
@@ -187,6 +192,7 @@ class AppConfig:
     language: str = "en"
     dismissed_battery_notice: bool = False
     check_for_updates: bool = False
+    theme: str = "system"  # "system" | "light" | "dark" - see THEME_OPTIONS
     items: list = dataclasses.field(default_factory=list)         # list[OverlayItem]
     effects: list = dataclasses.field(default_factory=list)       # list[EffectItem]
     nudge_groups: list = dataclasses.field(default_factory=list)  # list[NudgeGroup]
@@ -199,6 +205,7 @@ class AppConfig:
             "language": self.language,
             "dismissed_battery_notice": self.dismissed_battery_notice,
             "check_for_updates": self.check_for_updates,
+            "theme": self.theme,
             "items": [it.to_dict() for it in self.items],
             "effects": [ef.to_dict() for ef in self.effects],
             "nudge_groups": [g.to_dict() for g in self.nudge_groups],
@@ -213,6 +220,7 @@ class AppConfig:
             language=d.get("language", "en"),
             dismissed_battery_notice=d.get("dismissed_battery_notice", False),
             check_for_updates=d.get("check_for_updates", False),
+            theme=d.get("theme", "system"),
         )
         cfg.items = [OverlayItem.from_dict(it) for it in d.get("items", [])]
         cfg.effects = [EffectItem.from_dict(ef) for ef in d.get("effects", [])]

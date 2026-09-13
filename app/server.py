@@ -8,6 +8,7 @@ import json
 import mimetypes
 import os
 import posixpath
+import socket
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
@@ -57,6 +58,19 @@ class PreviewState:
     def get(self):
         with self._lock:
             return dict(self._data) if self._data else None
+
+
+def _config_version():
+    """A cheap 'has anything changed' signal for the overlay page: the
+    config file's own mtime. The client bakes in the version from page load
+    and compares it against every poll response - a mismatch means a Device/
+    Effect was added/edited/removed since this page loaded, so it reloads
+    itself instead of silently going stale (see OVERLAY_PAGE_TEMPLATE's
+    poll())."""
+    try:
+        return os.path.getmtime(paths.config_path())
+    except OSError:
+        return 0
 
 
 def _device_dict(devices):
@@ -281,9 +295,32 @@ OVERLAY_PAGE_TEMPLATE = r"""<!doctype html>
 <script>
 const ITEMS = __ITEMS_JSON__;
 const EFFECTS = __EFFECTS_JSON__;
+const PAGE_CONFIG_VERSION = __CONFIG_VERSION__;
 const root = document.getElementById('root');
 const state = {};       // devices:  id -> { lastLow, shown, lastSoundTs, el, audio, pic, pct }
 const effectState = {}; // effects:  id -> { lastShown, shown, lastSoundTs, el, audio }
+
+let missedPolls = 0;
+const STALE_AFTER_MISSES = 3; // ~3 poll intervals of silence -> assume the app/Simulator closed
+
+// Called once the server's gone quiet for a while, so a closed app (or a
+// crash) doesn't leave stale content stuck on screen forever - hides
+// everything currently shown; a later successful poll naturally re-shows
+// whatever's actually true again.
+function hideAllStale() {
+  for (const item of ITEMS) {
+    const s = state[item.id];
+    if (!s) continue;
+    if (item.show_mode === 'always') { s.el.classList.remove('visible'); }
+    else { s.el.style.display = 'none'; s.shown = false; }
+  }
+  for (const effect of EFFECTS) {
+    const s = effectState[effect.id];
+    if (!s) continue;
+    s.el.style.display = 'none';
+    s.shown = false;
+  }
+}
 
 const ENTER_KEYFRAMES = {
   pop_bottom: 'anim-pop-bottom',
@@ -578,6 +615,15 @@ async function poll() {
   try {
     const res = await fetch('/api/status', { cache: 'no-store' });
     const data = await res.json();
+    missedPolls = 0;
+
+    if (data.config_version !== undefined && data.config_version !== PAGE_CONFIG_VERSION) {
+      // A Device/Effect was added/edited/removed since this page loaded -
+      // reload to pick up the new ITEMS/EFFECTS instead of going stale
+      // (OBS's Browser Source never re-fetches this page on its own).
+      location.reload();
+      return;
+    }
 
     for (const item of ITEMS) {
       const s = state[item.id];
@@ -665,7 +711,11 @@ async function poll() {
       stopPreviewLoop();
     }
   } catch (e) {
-    // SteamVR overlay server hiccup; just retry next tick.
+    // Could be a momentary hiccup, or the app (or Simulator) has actually
+    // closed - after a few consecutive misses, assume the latter and clear
+    // the overlay instead of leaving stale content stuck on screen forever.
+    missedPolls++;
+    if (missedPolls === STALE_AFTER_MISSES) hideAllStale();
   }
   setTimeout(poll, __POLL_MS__);
 }
@@ -742,6 +792,7 @@ class _Handler(BaseHTTPRequestHandler):
             snapshot = self.server.vr_monitor.get_snapshot()
             payload = _device_payload(snapshot)
             payload["preview"] = _preview_payload(self.server.preview_state)
+            payload["config_version"] = _config_version()
             self._send_json(payload)
             return
 
@@ -776,6 +827,7 @@ class _Handler(BaseHTTPRequestHandler):
         html = html.replace("__ITEMS_JSON__", items_json)
         html = html.replace("__EFFECTS_JSON__", effects_json)
         html = html.replace("__POLL_MS__", str(int(max(0.25, cfg.poll_interval_sec) * 1000)))
+        html = html.replace("__CONFIG_VERSION__", json.dumps(_config_version()))
         self._send_html(html)
 
     def _handle_media(self, path):
@@ -815,6 +867,13 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_error(404, "Not found")
 
 
+def find_free_port() -> int:
+    """Asks the OS for a currently-unused TCP port on 127.0.0.1."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
 class OverlayHTTPServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
@@ -844,13 +903,22 @@ class ServerController:
     def port(self):
         return self._server.server_address[1] if self._server else None
 
-    def start(self):
+    def start(self) -> bool:
+        """Returns True if the server actually started, False if the
+        configured port was already in use (self._server stays None) -
+        callers decide how to surface that (e.g. a port-in-use warning)
+        instead of letting the bind error crash the app."""
         if self.running:
-            return
+            return True
         port = self.get_config().port
-        self._server = OverlayHTTPServer(port, self.get_config, self.vr_monitor, self.preview_state)
+        try:
+            self._server = OverlayHTTPServer(port, self.get_config, self.vr_monitor, self.preview_state)
+        except OSError:
+            self._server = None
+            return False
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._thread.start()
+        return True
 
     def stop(self):
         if not self.running:

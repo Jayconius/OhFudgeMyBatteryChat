@@ -4,16 +4,30 @@ and their battery state.
 Devices are keyed by serial number (stable across reboots/reconnects) rather
 than tracked-device index (which SteamVR can reassign), so a saved overlay
 item keeps pointing at "your right controller" even if SteamVR renumbers it.
+
+Each poll also checks for a small external "fake signal" file (see
+paths.fake_signal_path() / tools/fake_vr_signal_simulator.py) before touching
+real OpenVR at all - if it exists and was written recently, its devices are
+used for that cycle instead of real hardware, so a separate standalone tool
+can feed this app fake devices for demos/testing. No file, or a stale one
+(the simulator closed/crashed) -> falls straight back to real SteamVR, same
+as always.
 """
+import json
+import os
 import threading
 import time
 from dataclasses import dataclass, field
 from typing import Dict, Optional
 
+from . import paths
+
 try:
     import openvr
 except ImportError:  # pragma: no cover - dev environments without the package yet
     openvr = None
+
+FAKE_SIGNAL_MAX_AGE_SEC = 3.0  # simulator heartbeats faster than this; older -> treated as gone
 
 CLASS_NAMES = {
     getattr(openvr, "TrackedDeviceClass_HMD", 1): "HMD",
@@ -98,6 +112,46 @@ class VRMonitor:
                 self._snapshot.error = f"SteamVR not found ({exc})"
             return False
 
+    def _apply_devices(self, devices: Dict[str, DeviceState], connected: bool, error: str = ""):
+        self._known.update(devices)  # remember every serial seen, even after it disconnects
+        with self._lock:
+            self._snapshot.steamvr_connected = connected
+            self._snapshot.devices = devices
+            self._snapshot.known_devices = dict(self._known)
+            self._snapshot.error = error
+
+    def _read_fake_signal(self) -> Optional[Dict[str, DeviceState]]:
+        """Returns a devices dict from the fake-signal file if it exists and
+        is fresh, else None (meaning: no simulator running, use real OpenVR)."""
+        path = paths.fake_signal_path()
+        try:
+            mtime = os.path.getmtime(path)
+        except OSError:
+            return None
+        if time.time() - mtime > FAKE_SIGNAL_MAX_AGE_SEC:
+            return None
+        try:
+            with open(path, "r", encoding="utf-8-sig") as f:
+                raw = json.load(f)
+        except (OSError, ValueError):
+            return None
+
+        devices: Dict[str, DeviceState] = {}
+        for serial, d in raw.get("devices", {}).items():
+            if not isinstance(d, dict):
+                continue
+            devices[serial] = DeviceState(
+                serial=serial,
+                device_class=d.get("device_class", "Other"),
+                model=d.get("model", ""),
+                index=-1,
+                battery_pct=d.get("battery_pct"),
+                charging=d.get("charging"),
+                role=d.get("role", ""),
+                manufacturer=d.get("manufacturer", ""),
+            )
+        return devices
+
     def _poll_once(self):
         devices: Dict[str, DeviceState] = {}
         vr = self._vr_system
@@ -166,16 +220,16 @@ class VRMonitor:
                 manufacturer=manufacturer,
             )
 
-        self._known.update(devices)  # remember every serial seen, even after it disconnects
-
-        with self._lock:
-            self._snapshot.steamvr_connected = True
-            self._snapshot.devices = devices
-            self._snapshot.known_devices = dict(self._known)
-            self._snapshot.error = ""
+        self._apply_devices(devices, connected=True)
 
     def _run(self):
         while not self._stop.is_set():
+            fake_devices = self._read_fake_signal()
+            if fake_devices is not None:
+                self._apply_devices(fake_devices, connected=True)
+                self._stop.wait(self.poll_interval_sec)
+                continue
+
             if self._vr_system is None:
                 if not self._try_init():
                     self._stop.wait(3.0)

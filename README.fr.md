@@ -2,7 +2,7 @@
 
 # Oh Fudge, My Battery Chat!
 
-[![Version](https://img.shields.io/badge/version-v1.1.0-blue)](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/v1.1.0)
+[![Version](https://img.shields.io/badge/version-v1.2.0-blue)](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/v1.2.0)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D6)](#)
 [![Requires](https://img.shields.io/badge/requires-SteamVR-orange)](#)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
@@ -31,6 +31,7 @@ quelque chose est faible - comme une simple source de navigateur OBS.
    et lancez-le avec **SteamVR** déjà ouvert.
 2. Cliquez sur **Ajouter** pour ajouter un affichage d'appareil ou une
    alerte de batterie faible, puis faites-le glisser en place.
+   Double-cliquez ensuite sur une ligne de la liste pour la modifier.
 3. Copiez l'URL affichée en haut dans OBS en tant que **source
    navigateur** (taille 1920x1080).
 
@@ -69,6 +70,11 @@ l'exe est autonome.
    l'audio via OBS »** de cette source - certaines versions d'OBS
    bloquent l'audio en lecture automatique sans ça.
 
+Une fois ajoutée, elle reste synchronisée toute seule - ajouter, modifier
+ou supprimer un appareil/effet actualise automatiquement la source
+navigateur déjà ouverte en environ une seconde, plus besoin de faire un
+clic droit dessus pour « Actualiser le cache de la page actuelle ».
+
 </details>
 
 <details>
@@ -76,7 +82,10 @@ l'exe est autonome.
 
 1. Cliquez sur **Ajouter > Ajouter un appareil**.
 2. Choisissez l'appareil dans la liste de gauche (cliquez sur
-   **Actualiser** s'il n'apparaît pas encore).
+   **Actualiser** s'il n'apparaît pas encore). Les appareils déjà utilisés
+   par un autre appareil/effet sont masqués par défaut - cochez
+   **« Afficher les appareils déjà ajoutés »** si vous devez quand même en
+   réutiliser un.
 3. Donnez-lui un libellé et un seuil de batterie faible (%).
 4. Choisissez **Toujours visible** (l'icône reste en place, l'image
    change seulement quand la batterie est faible) ou **Masqué jusqu'à
@@ -127,6 +136,27 @@ l'exe est autonome.
 
 </details>
 
+<details>
+<summary><strong>Tester sans SteamVR (le Simulateur de démo)</strong></summary>
+
+Récupérez le [Simulateur de démo](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/simulator-v1.0.0)
+autonome si vous voulez enregistrer des clips, prendre des captures d'écran,
+ou simplement essayer des configurations d'appareils/effets sans casque.
+
+1. Placez `OhFudgeMyBatteryChatSimulator.exe` dans le **même dossier** que
+   `OhFudgeMyBatteryChat.exe` pour qu'ils partagent un seul dossier Data,
+   puis lancez les deux.
+2. Il liste vos appareils réellement configurés (ou quatre appareils
+   génériques de remplacement plus un ensemble de trackers corps entier à
+   5 points si vous n'en avez pas encore ajouté), chacun avec un curseur de
+   batterie et une case « Connecté ».
+3. L'application réelle le récupère automatiquement tant que les deux
+   tournent - nécessite v1.2.0 ou plus récent. Fermez le Simulateur (ou
+   arrêtez-le simplement) pour rendre le contrôle au vrai SteamVR, sans
+   redémarrage nécessaire.
+
+</details>
+
 ## Fonctionnalités
 
 - Pourcentage de batterie en direct pour tout appareil SteamVR, avec
@@ -144,6 +174,13 @@ l'exe est autonome.
 - Les groupes de décalage (Nudge Groups) évitent que plusieurs alertes de
   batterie faible se chevauchent - elles s'alignent automatiquement, les
   plus anciennes en premier
+- Thème clair/sombre, s'adaptant automatiquement à votre réglage Windows
+  (ou réglable manuellement dans la fenêtre À propos)
+- La source navigateur OBS reste synchronisée automatiquement quand vous
+  ajoutez/modifiez/supprimez quelque chose - aucune actualisation manuelle
+  requise
+- Un [Simulateur de démo](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/simulator-v1.0.0)
+  autonome pour tester/enregistrer sans SteamVR en cours d'exécution
 - Vérification facultative des nouvelles versions au démarrage,
   désactivée par défaut
 - Fonctionne en anglais, allemand, français, espagnol, japonais et

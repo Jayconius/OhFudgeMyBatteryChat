@@ -2,7 +2,7 @@
 
 # Oh Fudge, My Battery Chat!
 
-[![Version](https://img.shields.io/badge/version-v1.1.0-blue)](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/v1.1.0)
+[![Version](https://img.shields.io/badge/version-v1.2.0-blue)](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/v1.2.0)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D6)](#)
 [![Requires](https://img.shields.io/badge/requires-SteamVR-orange)](#)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
@@ -29,7 +29,8 @@ OBS-Browserquelle.
 1. Lade die exe aus den [Releases](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/latest)
    herunter und starte sie bei bereits laufendem **SteamVR**.
 2. Klicke auf **Hinzufügen**, um eine Geräteanzeige oder einen Akku-Warnhinweis
-   hinzuzufügen, und ziehe ihn an die gewünschte Position.
+   hinzuzufügen, und ziehe ihn an die gewünschte Position. Doppelklicke später
+   auf einen Eintrag in der Liste, um ihn zu bearbeiten.
 3. Kopiere die oben angezeigte URL in OBS als **Browserquelle** (Größe
    1920x1080).
 
@@ -65,6 +66,12 @@ ist eigenständig lauffähig.
    OBS steuern"** dieser Quelle - manche OBS-Versionen blockieren
    Autoplay-Audio sonst.
 
+Einmal hinzugefügt, bleibt sie von selbst synchron - das Hinzufügen,
+Bearbeiten oder Entfernen eines Geräts/Effekts aktualisiert die bereits
+geöffnete Browserquelle automatisch innerhalb von etwa einer Sekunde. Kein
+manuelles Rechtsklicken mehr auf „Cache der aktuellen Seite aktualisieren"
+nötig.
+
 </details>
 
 <details>
@@ -72,7 +79,10 @@ ist eigenständig lauffähig.
 
 1. Klicke auf **Hinzufügen > Gerät hinzufügen**.
 2. Wähle das Gerät aus der Liste links aus (klicke auf **Aktualisieren**,
-   falls es noch nicht angezeigt wird).
+   falls es noch nicht angezeigt wird). Geräte, die bereits von einem
+   anderen Gerät/Effekt verwendet werden, sind standardmäßig ausgeblendet -
+   aktiviere **„Bereits hinzugefügte Geräte anzeigen"**, wenn du eines
+   trotzdem erneut verwenden möchtest.
 3. Vergib eine Bezeichnung und einen Schwellenwert für niedrigen Akkustand
    (%).
 4. Wähle **Immer sichtbar** (Symbol bleibt bestehen, wechselt bei niedrigem
@@ -120,6 +130,27 @@ ist eigenständig lauffähig.
 
 </details>
 
+<details>
+<summary><strong>Testen ohne SteamVR (der Demo-Simulator)</strong></summary>
+
+Hol dir den eigenständigen [Demo-Simulator](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/simulator-v1.0.0),
+wenn du Clips aufnehmen, Screenshots machen oder einfach Geräte-/Effekt-
+Konfigurationen ausprobieren möchtest, ohne ein Headset aufzusetzen.
+
+1. Lege `OhFudgeMyBatteryChatSimulator.exe` in denselben Ordner wie
+   `OhFudgeMyBatteryChat.exe`, damit sich beide einen Data-Ordner teilen,
+   und starte dann beide.
+2. Er listet deine echten konfigurierten Geräte auf (oder vier generische
+   Platzhalter plus ein 5-Punkte-Ganzkörper-Tracker-Set, falls du noch
+   keine hinzugefügt hast), jeweils mit einem Akku-Schieberegler und einer
+   „Verbunden"-Checkbox.
+3. Die echte App übernimmt das automatisch, solange beide laufen -
+   erfordert v1.2.0 oder neuer. Schließe den Simulator (oder stoppe ihn
+   einfach), um die Kontrolle wieder an das echte SteamVR zu übergeben -
+   kein Neustart nötig.
+
+</details>
+
 ## Funktionen
 
 - Live-Akkustand in % für jedes SteamVR-Gerät, mit Einblend-Warnung bei
@@ -133,6 +164,12 @@ ist eigenständig lauffähig.
   Ausblendanimationen
 - Nudge-Gruppen verhindern, dass sich mehrere Akku-Warnungen überlappen -
   sie reihen sich automatisch auf, älteste zuerst
+- Dunkles/helles Design, passt sich automatisch an deine Windows-
+  Einstellung an (oder manuell umstellbar im Info-Fenster)
+- Die OBS-Browserquelle bleibt automatisch synchron, wenn du etwas
+  hinzufügst/änderst/entfernst - kein manuelles Aktualisieren nötig
+- Ein eigenständiger [Demo-Simulator](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/simulator-v1.0.0)
+  zum Testen/Aufnehmen ohne laufendes SteamVR
 - Optionale Update-Prüfung beim Start, standardmäßig deaktiviert
 - Läuft auf Englisch, Deutsch, Französisch, Spanisch, Japanisch und
   Klingonisch

@@ -26,14 +26,16 @@ from . import default_assets
 from . import i18n
 from . import paths
 from . import piqad
+from . import theme
 from . import update_check
 from .server import ServerController
 from .vr_monitor import VRMonitor
 
 APP_TITLE = "Oh Fudge, My Battery Chat!"  # the pun stays the same in every language
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.2.0"
 APP_AUTHOR = "Jayconius"
 APP_GITHUB_URL = "https://github.com/Jayconius/OhFudgeMyBatteryChat"
+APP_CONTACT_URL = "https://jayconius.com"
 
 DEFAULT_FONT_FAMILY = "Segoe UI"
 
@@ -172,9 +174,11 @@ def _make_color_button(parent, initial_hex, on_change):
 class AboutDialog(tk.Toplevel):
     def __init__(self, parent):
         super().__init__(parent)
+        self.withdraw()
         self.main_window = parent
         self.title(i18n.t("about_title"))
         self.resizable(False, False)
+        theme.apply_window_theme(self, getattr(parent, "dark_mode", False))
 
         frm = ttk.Frame(self)
         frm.pack(padx=18, pady=16)
@@ -191,6 +195,10 @@ class AboutDialog(tk.Toplevel):
         link = ttk.Label(info, text=APP_GITHUB_URL, foreground="#3d8bff", cursor="hand2", font=_default_font())
         link.grid(row=2, column=1, sticky="w")
         link.bind("<Button-1>", lambda e: webbrowser.open(APP_GITHUB_URL))
+        ttk.Label(info, text=i18n.t_piqad("about_contact_label")).grid(row=3, column=0, sticky="w", padx=(0, 6))
+        contact_link = ttk.Label(info, text=APP_CONTACT_URL, foreground="#3d8bff", cursor="hand2", font=_default_font())
+        contact_link.grid(row=3, column=1, sticky="w")
+        contact_link.bind("<Button-1>", lambda e: webbrowser.open(APP_CONTACT_URL))
 
         self.check_updates_var = tk.BooleanVar(value=parent.cfg.check_for_updates)
         ttk.Checkbutton(
@@ -198,15 +206,34 @@ class AboutDialog(tk.Toplevel):
             variable=self.check_updates_var, command=self._toggle_check_updates,
         ).pack(anchor="w", pady=(12, 0))
 
+        theme_row = ttk.Frame(frm)
+        theme_row.pack(anchor="w", pady=(10, 0), fill="x")
+        ttk.Label(theme_row, text=i18n.t_piqad("about_theme_label")).pack(side="left", padx=(0, 6))
+        self.theme_keys = list(config_mod.THEME_OPTIONS.keys())
+        self.theme_combo = ttk.Combobox(
+            theme_row, values=[i18n.t_piqad(f"theme_{k}") for k in self.theme_keys],
+            state="readonly", width=14,
+        )
+        self.theme_combo.current(self.theme_keys.index(parent.cfg.theme if parent.cfg.theme in self.theme_keys else "system"))
+        self.theme_combo.pack(side="left")
+        self.theme_combo.bind("<<ComboboxSelected>>", self._on_theme_change)
+
         ttk.Button(frm, text=i18n.t_piqad("about_close"), command=self.destroy).pack(anchor="e", pady=(14, 0))
 
         self.grab_set()
         self.transient(parent)
+        self.deiconify()
 
     def _toggle_check_updates(self):
         self.main_window.cfg.check_for_updates = self.check_updates_var.get()
         config_mod.save(self.main_window.cfg)
         self.main_window._maybe_check_for_updates()
+
+    def _on_theme_change(self, event=None):
+        new_theme = self.theme_keys[self.theme_combo.current()]
+        self.main_window.cfg.theme = new_theme
+        config_mod.save(self.main_window.cfg)
+        messagebox.showinfo(i18n.t("about_theme_label"), i18n.t("msg_theme_restart"), parent=self)
 
 
 class FirstRunNoticeDialog(tk.Toplevel):
@@ -219,10 +246,12 @@ class FirstRunNoticeDialog(tk.Toplevel):
 
     def __init__(self, parent, on_dismiss):
         super().__init__(parent)
+        self.withdraw()
         self.main_window = parent
         self.on_dismiss = on_dismiss
         self._lang_changed = False
         self.resizable(False, False)
+        theme.apply_window_theme(self, getattr(parent, "dark_mode", False))
 
         lang_row = ttk.Frame(self)
         lang_row.pack(fill="x", padx=18, pady=(14, 0))
@@ -237,6 +266,7 @@ class FirstRunNoticeDialog(tk.Toplevel):
         self.protocol("WM_DELETE_WINDOW", self._on_ok)
         self.grab_set()
         self.transient(parent)
+        self.deiconify()
 
     def _build_body(self):
         self.title(i18n.t_piqad("notice_title"))
@@ -278,14 +308,14 @@ class FirstRunNoticeDialog(tk.Toplevel):
 class DeviceSelectorMixin:
     """Shared 'pick a live SteamVR device, or type a serial manually' UI."""
 
-    def _build_device_selector(self, parent, current_serial):
+    def _build_device_selector(self, parent, current_serial, exclude_serials=None):
         device_frame = ttk.LabelFrame(parent, text=i18n.t_piqad("frame_device"))
 
+        self._selector_current_serial = current_serial
+        self._exclude_serials = set(exclude_serials or ())
         self.manual_var = tk.BooleanVar(value=False)
-        snapshot = self.vr_monitor.get_snapshot()
-        self._live_devices = snapshot.devices
-        self._device_values = [_device_display(s, d) for s, d in snapshot.devices.items()]
-        self._device_serials = list(snapshot.devices.keys())
+        self.show_used_var = tk.BooleanVar(value=False)
+        self._compute_device_lists()
 
         self.device_combo = ttk.Combobox(device_frame, values=self._device_values, width=55, state="readonly")
         self.device_combo.grid(row=0, column=0, padx=6, pady=4, sticky="ew")
@@ -299,6 +329,12 @@ class DeviceSelectorMixin:
             variable=self.manual_var, command=self._toggle_manual,
         ).grid(row=1, column=0, columnspan=2, sticky="w", padx=6)
 
+        if self._exclude_serials:
+            ttk.Checkbutton(
+                device_frame, text=i18n.t_piqad("chk_show_used_devices"),
+                variable=self.show_used_var, command=self._refresh_devices,
+            ).grid(row=3, column=0, columnspan=2, sticky="w", padx=6)
+
         self.manual_serial_entry = ttk.Entry(device_frame, width=40)
         self.manual_serial_entry.insert(0, current_serial)
         self._toggle_manual()
@@ -311,12 +347,22 @@ class DeviceSelectorMixin:
         else:
             self.manual_serial_entry.grid_remove()
 
-    def _refresh_devices(self):
+    def _compute_device_lists(self):
         snapshot = self.vr_monitor.get_snapshot()
         self._live_devices = snapshot.devices
-        self._device_values = [_device_display(s, d) for s, d in snapshot.devices.items()]
-        self._device_serials = list(snapshot.devices.keys())
+        hide = set() if self.show_used_var.get() else self._exclude_serials
+        visible = {
+            s: d for s, d in snapshot.devices.items()
+            if s not in hide or s == self._selector_current_serial
+        }
+        self._device_values = [_device_display(s, d) for s, d in visible.items()]
+        self._device_serials = list(visible.keys())
+
+    def _refresh_devices(self):
+        self._compute_device_lists()
         self.device_combo.configure(values=self._device_values)
+        if self._selector_current_serial in self._device_serials:
+            self.device_combo.current(self._device_serials.index(self._selector_current_serial))
 
     def _resolve_device_selection(self, fallback_class_hint="Other"):
         """Returns (serial, device_class_hint), or None (after showing an error)."""
@@ -572,14 +618,17 @@ class PreviewMixin:
 
 
 class ItemEditorDialog(DeviceSelectorMixin, MediaPickerMixin, AnimationPickerMixin, PositionCanvasMixin, PreviewMixin, tk.Toplevel):
-    def __init__(self, parent, vr_monitor: VRMonitor, item: config_mod.OverlayItem, other_items, preview_state=None, nudge_groups=None):
+    def __init__(self, parent, vr_monitor: VRMonitor, item: config_mod.OverlayItem, other_items, preview_state=None, nudge_groups=None, exclude_serials=None):
         super().__init__(parent)
+        self.withdraw()
         self.title(i18n.t("dlg_title_device"))
         self.resizable(False, False)
+        theme.apply_window_theme(self, getattr(parent, "dark_mode", False))
         self.vr_monitor = vr_monitor
         self.item = item
         self.other_items = other_items
         self.nudge_groups = nudge_groups if nudge_groups is not None else []
+        self.exclude_serials = exclude_serials
         self.result = None
         self._init_preview(preview_state)
         self._pending_media = {"normal": None, "low": None, "sound": None}
@@ -588,14 +637,48 @@ class ItemEditorDialog(DeviceSelectorMixin, MediaPickerMixin, AnimationPickerMix
         self.protocol("WM_DELETE_WINDOW", self._on_cancel)
         self.grab_set()
         self.transient(parent)
+        self.deiconify()
 
     def _build(self):
         pad = {"padx": 8, "pady": 4}
 
-        device_frame = self._build_device_selector(self, self.item.device_serial)
+        # Save/Cancel are pinned outside the scroll area (packed first, so
+        # they claim their space at the bottom before the scrollable body
+        # below expands to fill the rest) - this dialog can grow tall enough
+        # (Nudge + Pop Animation + Caption Text + Media + Position all
+        # visible at once) to outgrow a smaller screen, and with
+        # resizable(False, False) there'd otherwise be no way to reach Save.
+        btns = ttk.Frame(self)
+        btns.pack(side="bottom", fill="x", padx=8, pady=10)
+        ttk.Button(btns, text=i18n.t_piqad("btn_cancel"), command=self._on_cancel).pack(side="right", padx=4)
+        ttk.Button(btns, text=i18n.t_piqad("btn_save"), command=self._on_save).pack(side="right", padx=4)
+        self._body_btns = btns
+
+        container = ttk.Frame(self)
+        container.pack(side="top", fill="both", expand=True)
+        canvas = tk.Canvas(container, highlightthickness=0, bg=self.cget("bg"))
+        vsb = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=vsb.set)
+        vsb.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+        inner = ttk.Frame(canvas)
+        inner_window = canvas.create_window((0, 0), window=inner, anchor="nw")
+        self._body_canvas, self._body_inner, self._body_vsb = canvas, inner, vsb
+
+        def _sync_scrollregion(event=None):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+        inner.bind("<Configure>", _sync_scrollregion)
+        canvas.bind("<Configure>", lambda e: canvas.itemconfig(inner_window, width=e.width))
+
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        canvas.bind("<Enter>", lambda e: canvas.bind_all("<MouseWheel>", _on_mousewheel))
+        canvas.bind("<Leave>", lambda e: canvas.unbind_all("<MouseWheel>"))
+
+        device_frame = self._build_device_selector(inner, self.item.device_serial, exclude_serials=self.exclude_serials)
         device_frame.grid(row=0, column=0, columnspan=2, sticky="ew", **pad)
 
-        basics = ttk.LabelFrame(self, text=i18n.t_piqad("frame_basics"))
+        basics = ttk.LabelFrame(inner, text=i18n.t_piqad("frame_basics"))
         basics.grid(row=1, column=0, columnspan=2, sticky="ew", **pad)
         ttk.Label(basics, text=i18n.t_piqad("lbl_label")).grid(row=0, column=0, sticky="w", padx=6)
         self.label_entry = ttk.Entry(basics, width=30)
@@ -611,15 +694,15 @@ class ItemEditorDialog(DeviceSelectorMixin, MediaPickerMixin, AnimationPickerMix
         ttk.Radiobutton(basics, text=i18n.t_piqad("radio_always"), variable=self.mode_var, value="always", command=self._update_anim_frame_visibility).grid(row=2, column=0, columnspan=3, sticky="w", padx=6)
         ttk.Radiobutton(basics, text=i18n.t_piqad("radio_low_only"), variable=self.mode_var, value="low_only", command=self._update_anim_frame_visibility).grid(row=3, column=0, columnspan=3, sticky="w", padx=6)
 
-        self.anim_frame = self._build_animation_frame(self, i18n.t_piqad("frame_pop_animation_device"), self.item.enter_animation, self.item.exit_animation)
+        self.anim_frame = self._build_animation_frame(inner, i18n.t_piqad("frame_pop_animation_device"), self.item.enter_animation, self.item.exit_animation)
         self.anim_frame.grid(row=2, column=0, columnspan=2, sticky="ew", **pad)
 
-        self.nudge_frame = self._build_nudge_frame(self)
+        self.nudge_frame = self._build_nudge_frame(inner)
         self.nudge_frame.grid(row=3, column=0, columnspan=2, sticky="ew", **pad)
 
         self.label_entry.bind("<KeyRelease>", lambda e: self._push_preview_if_active())
 
-        caption_frame = ttk.LabelFrame(self, text=i18n.t_piqad("frame_caption"))
+        caption_frame = ttk.LabelFrame(inner, text=i18n.t_piqad("frame_caption"))
         caption_frame.grid(row=4, column=0, columnspan=2, sticky="ew", **pad)
         self.label_style = self._build_text_style_block(
             caption_frame, row=0, title_key="frame_label_style", show_key="chk_show_label",
@@ -640,7 +723,7 @@ class ItemEditorDialog(DeviceSelectorMixin, MediaPickerMixin, AnimationPickerMix
             ),
         )
 
-        media = ttk.LabelFrame(self, text=i18n.t_piqad("frame_media"))
+        media = ttk.LabelFrame(inner, text=i18n.t_piqad("frame_media"))
         media.grid(row=5, column=0, columnspan=2, sticky="ew", **pad)
         _, self.normal_anim_combo, self.normal_anim_keys = self._media_row(
             media, 0, i18n.t_piqad("lbl_normal_pic"), "normal", self.item.normal_image,
@@ -655,15 +738,44 @@ class ItemEditorDialog(DeviceSelectorMixin, MediaPickerMixin, AnimationPickerMix
         start_group = self._find_group(self.item.nudge_group_id)
         start_x = start_group.x_pct if start_group else self.item.x_pct
         start_y = start_group.y_pct if start_group else self.item.y_pct
-        pos_frame = self._build_position_frame(self, self.item.id, start_x, start_y, self.item.width_px)
+        pos_frame = self._build_position_frame(inner, self.item.id, start_x, start_y, self.item.width_px)
         pos_frame.grid(row=6, column=0, columnspan=2, sticky="ew", **pad)
 
-        btns = ttk.Frame(self)
-        btns.grid(row=7, column=0, columnspan=2, sticky="e", padx=8, pady=10)
-        ttk.Button(btns, text=i18n.t_piqad("btn_cancel"), command=self._on_cancel).pack(side="right", padx=4)
-        ttk.Button(btns, text=i18n.t_piqad("btn_save"), command=self._on_save).pack(side="right", padx=4)
-
         self._update_anim_frame_visibility()
+        self._cap_dialog_height(inner, vsb)
+
+    def _cap_dialog_height(self, inner, vsb):
+        """Caps the dialog's total height to fit the screen (leaving room
+        for the taskbar/title bar) - the canvas scrolls internally for
+        whatever doesn't fit, so Save/Cancel stay reachable regardless of
+        how many customization sections are visible or how small the
+        screen is.
+
+        Measures the button bar directly rather than deriving it from
+        self.winfo_reqheight() - a Canvas's own requested size defaults to a
+        small fixed value regardless of what's embedded in it via
+        create_window(), so it doesn't propagate inner's real height
+        upward; subtracting from the Toplevel's total would badly
+        underestimate the button bar's share."""
+        self.update_idletasks()
+        content_w = inner.winfo_reqwidth()
+        scrollbar_w = vsb.winfo_reqwidth()
+        width = content_w + scrollbar_w + 20
+        content_h = inner.winfo_reqheight()
+        chrome_h = self._body_btns.winfo_reqheight() + 20  # pady top+bottom on the button bar
+        screen_h = self.winfo_screenheight()
+        max_total_h = max(300, screen_h - 100)
+        total_h = min(content_h + chrome_h, max_total_h)
+        # A plain geometry() call isn't enough here: since the dialog is
+        # resizable(False, False), Tk keeps re-snapping it back to its
+        # natural pack-computed request size (dominated by the Canvas's tiny
+        # built-in default, since a Canvas never propagates the size of
+        # whatever's embedded in it via create_window()) on the next layout
+        # pass, silently discarding the explicit size below. Pinning
+        # min/maxsize to the same value locks it for real.
+        self.minsize(width, total_h)
+        self.maxsize(width, total_h)
+        self.geometry(f"{width}x{total_h}")
 
     def _build_text_style_block(self, parent, row, title_key, show_key, show_default, prefix_defaults):
         """One customizable text element (Label or Battery %): show toggle,
@@ -906,13 +1018,16 @@ class ItemEditorDialog(DeviceSelectorMixin, MediaPickerMixin, AnimationPickerMix
 
 
 class EffectEditorDialog(DeviceSelectorMixin, MediaPickerMixin, AnimationPickerMixin, PositionCanvasMixin, PreviewMixin, tk.Toplevel):
-    def __init__(self, parent, vr_monitor: VRMonitor, effect: config_mod.EffectItem, other_items, preview_state=None):
+    def __init__(self, parent, vr_monitor: VRMonitor, effect: config_mod.EffectItem, other_items, preview_state=None, exclude_serials=None):
         super().__init__(parent)
+        self.withdraw()
         self.title(i18n.t("dlg_title_effect"))
         self.resizable(False, False)
+        theme.apply_window_theme(self, getattr(parent, "dark_mode", False))
         self.vr_monitor = vr_monitor
         self.effect = effect
         self.other_items = other_items
+        self.exclude_serials = exclude_serials
         self.result = None
         self._init_preview(preview_state)
         self._pending_media = {"picture": None, "sound": None}
@@ -921,6 +1036,7 @@ class EffectEditorDialog(DeviceSelectorMixin, MediaPickerMixin, AnimationPickerM
         self.protocol("WM_DELETE_WINDOW", self._on_cancel)
         self.grab_set()
         self.transient(parent)
+        self.deiconify()
 
     def _build(self):
         pad = {"padx": 8, "pady": 4}
@@ -1030,7 +1146,7 @@ class EffectEditorDialog(DeviceSelectorMixin, MediaPickerMixin, AnimationPickerM
                 command=self._update_target_mode_visibility,
             ).pack(side="left", padx=(0, 10))
 
-        self.device_frame = self._build_device_selector(frame, self.effect.device_serial)
+        self.device_frame = self._build_device_selector(frame, self.effect.device_serial, exclude_serials=self.exclude_serials)
         self.device_frame.grid(row=1, column=0, columnspan=2, sticky="ew", padx=6, pady=3)
 
         self.ignore_frame = ttk.Frame(frame)
@@ -1166,24 +1282,36 @@ class EffectEditorDialog(DeviceSelectorMixin, MediaPickerMixin, AnimationPickerM
 class MainWindow(tk.Tk):
     def __init__(self):
         super().__init__()
+        # Stays withdrawn until fully built and themed - deiconify() at the
+        # end of __init__ is itself the hide/show cycle the dark title bar
+        # needs to actually render (see theme._apply_dark_titlebar's
+        # docstring), so the window's first visible frame is already
+        # correct instead of flashing light-then-dark.
+        self.withdraw()
         self.cfg = config_mod.load()
         i18n.set_language(self.cfg.language)
         apply_language_style()
+        self.dark_mode = self._resolve_dark_mode()
+        theme.apply_theme(self.dark_mode)
         default_assets.ensure_defaults()
         bundled_icons.ensure_device_icons()
         self.vr_monitor = VRMonitor(poll_interval_sec=self.cfg.poll_interval_sec)
         self.vr_monitor.start()
         self.server = ServerController(get_config=lambda: self.cfg, vr_monitor=self.vr_monitor)
-        self.server.start()
+        self._port_conflict = not self.server.start()
+        self._port_flash_job = None
+        self._port_tooltip = None
 
         self.title(APP_TITLE)
         self.geometry("860x560")
         self.minsize(740, 480)
+        theme.apply_window_theme(self, self.dark_mode)
 
         self._build()
         self._tick()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self._refresh_url()
+        self.deiconify()
 
         if not self.cfg.dismissed_battery_notice:
             self.after(200, self._show_battery_notice)
@@ -1218,8 +1346,10 @@ class MainWindow(tk.Tk):
 
     def _show_update_notice(self, tag, url):
         dlg = tk.Toplevel(self)
+        dlg.withdraw()
         dlg.title(i18n.t_piqad("update_notice_title"))
         dlg.resizable(False, False)
+        theme.apply_window_theme(dlg, self.dark_mode)
         frm = ttk.Frame(dlg)
         frm.pack(padx=18, pady=16)
         ttk.Label(frm, text=i18n.t("update_notice_body_fmt").format(version=tag), font=_default_font()).pack(anchor="w")
@@ -1228,6 +1358,7 @@ class MainWindow(tk.Tk):
         link.bind("<Button-1>", lambda e: webbrowser.open(url))
         ttk.Button(frm, text=i18n.t_piqad("about_close"), command=dlg.destroy).pack(anchor="e", pady=(14, 0))
         dlg.transient(self)
+        dlg.deiconify()
 
     # -- UI -----------------------------------------------------------
     def _build(self):
@@ -1252,6 +1383,15 @@ class MainWindow(tk.Tk):
         entry.pack(side="left", padx=8)
         ttk.Button(server_frame, text=i18n.t_piqad("btn_copy_url"), command=self._copy_url).pack(side="left")
         ttk.Button(server_frame, text=i18n.t_piqad("btn_open_browser"), command=self._open_url).pack(side="left", padx=4)
+
+        self.port_warning_frame = ttk.Frame(self)
+        self.port_warning_frame.pack(fill="x", padx=10, pady=(0, 4))
+        self.port_warning_lbl = tk.Label(self.port_warning_frame, fg="#cc0000", font=("Segoe UI", 9, "bold"))
+        self.use_free_port_btn = ttk.Button(self.port_warning_frame, text=i18n.t_piqad("btn_use_free_port"), command=self._use_free_port)
+        self.use_free_port_btn.bind("<Enter>", self._show_port_tooltip)
+        self.use_free_port_btn.bind("<Leave>", self._hide_port_tooltip)
+        if self._port_conflict:
+            self._show_port_warning()
 
         body = ttk.PanedWindow(self, orient="horizontal")
         body.pack(fill="both", expand=True, padx=10, pady=4)
@@ -1278,6 +1418,7 @@ class MainWindow(tk.Tk):
         for col, w in (("type", 60), ("label", 130), ("device", 140), ("mode", 110), ("threshold", 70)):
             self.item_tree.column(col, width=w)
         self.item_tree.pack(fill="both", expand=True, padx=6, pady=6)
+        self.item_tree.bind("<Double-1>", lambda e: self._edit_selected())
 
         item_btns = ttk.Frame(right)
         item_btns.pack(fill="x", padx=6, pady=(0, 6))
@@ -1302,6 +1443,15 @@ class MainWindow(tk.Tk):
     def _show_about(self):
         AboutDialog(self)
 
+    def _resolve_dark_mode(self) -> bool:
+        """cfg.theme "light"/"dark" is an explicit user override; "system"
+        (the default) follows the OS setting, detected once at startup."""
+        if self.cfg.theme == "dark":
+            return True
+        if self.cfg.theme == "light":
+            return False
+        return theme.detect_windows_dark_mode()
+
     def _on_language_change(self, event=None):
         idx = self.lang_combo.current()
         new_lang = self._lang_keys[idx]
@@ -1312,6 +1462,10 @@ class MainWindow(tk.Tk):
         self._rebuild_ui()
 
     def _rebuild_ui(self):
+        if self._port_flash_job:
+            self.after_cancel(self._port_flash_job)
+            self._port_flash_job = None
+        self._hide_port_tooltip()
         for child in list(self.winfo_children()):
             child.destroy()
         self._build()
@@ -1325,9 +1479,66 @@ class MainWindow(tk.Tk):
         if self.server.running:
             self.server.stop()
             self.server_btn.configure(text=i18n.t_piqad("btn_start_server"))
+            self._port_conflict = False
+            self._hide_port_warning()
         else:
-            self.server.start()
+            started = self.server.start()
+            self._port_conflict = not started
+            if started:
+                self.server_btn.configure(text=i18n.t_piqad("btn_stop_server"))
+                self._hide_port_warning()
+            else:
+                self._show_port_warning()
+        self._refresh_url()
+
+    def _show_port_warning(self):
+        self.port_warning_lbl.pack(side="left")
+        self.use_free_port_btn.pack(side="left", padx=8)
+        self._flash_port_warning()
+
+    def _hide_port_warning(self):
+        if self._port_flash_job:
+            self.after_cancel(self._port_flash_job)
+            self._port_flash_job = None
+        self.port_warning_lbl.pack_forget()
+        self.use_free_port_btn.pack_forget()
+
+    def _flash_port_warning(self):
+        current = self.port_warning_lbl.cget("fg")
+        next_color = "#ff6b6b" if current == "#cc0000" else "#cc0000"
+        self.port_warning_lbl.configure(fg=next_color, text=i18n.t("warn_port_in_use"))
+        self._port_flash_job = self.after(600, self._flash_port_warning)
+
+    def _show_port_tooltip(self, event=None):
+        if self._port_tooltip:
+            return
+        x = self.use_free_port_btn.winfo_rootx()
+        y = self.use_free_port_btn.winfo_rooty() + self.use_free_port_btn.winfo_height() + 4
+        tip = tk.Toplevel(self)
+        tip.wm_overrideredirect(True)
+        tip.wm_geometry(f"+{x}+{y}")
+        tk.Label(
+            tip, text=i18n.t("tooltip_use_free_port"), background="#ffffe0",
+            relief="solid", borderwidth=1, font=("Segoe UI", 8),
+            wraplength=260, justify="left", padx=6, pady=4,
+        ).pack()
+        self._port_tooltip = tip
+
+    def _hide_port_tooltip(self, event=None):
+        if self._port_tooltip:
+            self._port_tooltip.destroy()
+            self._port_tooltip = None
+
+    def _use_free_port(self):
+        from . import server as server_mod
+        self._hide_port_tooltip()
+        self.cfg.port = server_mod.find_free_port()
+        config_mod.save(self.cfg)
+        started = self.server.start()
+        self._port_conflict = not started
+        if started:
             self.server_btn.configure(text=i18n.t_piqad("btn_stop_server"))
+            self._hide_port_warning()
         self._refresh_url()
 
     def _copy_url(self):
@@ -1376,9 +1587,23 @@ class MainWindow(tk.Tk):
             return "effect", next((ef for ef in self.cfg.effects if ef.id == effect_id), None)
         return None, None
 
+    def _used_device_serials(self, exclude_id=None):
+        """Serials already tied to an existing Device item or a specific-
+        target Effect, so the Add dialogs can hide them by default (a
+        device already used elsewhere is usually not what you want to
+        double-book) - excluding the item currently being edited, if any."""
+        used = set()
+        for it in self.cfg.items:
+            if it.id != exclude_id and it.device_serial:
+                used.add(it.device_serial)
+        for ef in self.cfg.effects:
+            if ef.id != exclude_id and ef.target_mode == "specific" and ef.device_serial:
+                used.add(ef.device_serial)
+        return used
+
     def _add_item(self):
         new_item = config_mod.OverlayItem(id=config_mod.new_item_id(), label="", device_serial="")
-        dlg = ItemEditorDialog(self, self.vr_monitor, new_item, self._all_positionables(), preview_state=self.server.preview_state, nudge_groups=self.cfg.nudge_groups)
+        dlg = ItemEditorDialog(self, self.vr_monitor, new_item, self._all_positionables(), preview_state=self.server.preview_state, nudge_groups=self.cfg.nudge_groups, exclude_serials=self._used_device_serials())
         self.wait_window(dlg)
         if dlg.result:
             self.cfg.items.append(dlg.result)
@@ -1387,7 +1612,7 @@ class MainWindow(tk.Tk):
 
     def _add_effect(self):
         new_effect = config_mod.EffectItem(id=config_mod.new_effect_id(), label="", device_serial="")
-        dlg = EffectEditorDialog(self, self.vr_monitor, new_effect, self._all_positionables(), preview_state=self.server.preview_state)
+        dlg = EffectEditorDialog(self, self.vr_monitor, new_effect, self._all_positionables(), preview_state=self.server.preview_state, exclude_serials=self._used_device_serials())
         self.wait_window(dlg)
         if dlg.result:
             self.cfg.effects.append(dlg.result)
@@ -1400,8 +1625,9 @@ class MainWindow(tk.Tk):
             messagebox.showinfo(i18n.t("msg_select_item_title"), i18n.t("msg_select_item_body"))
             return
         others = [p for p in self._all_positionables() if p.id != obj.id]
+        exclude_serials = self._used_device_serials(exclude_id=obj.id)
         if kind == "device":
-            dlg = ItemEditorDialog(self, self.vr_monitor, obj, others, preview_state=self.server.preview_state, nudge_groups=self.cfg.nudge_groups)
+            dlg = ItemEditorDialog(self, self.vr_monitor, obj, others, preview_state=self.server.preview_state, nudge_groups=self.cfg.nudge_groups, exclude_serials=exclude_serials)
             self.wait_window(dlg)
             if dlg.result:
                 idx = next(i for i, it in enumerate(self.cfg.items) if it.id == obj.id)
@@ -1409,7 +1635,7 @@ class MainWindow(tk.Tk):
                 config_mod.save(self.cfg)
                 self._refresh_item_tree()
         else:
-            dlg = EffectEditorDialog(self, self.vr_monitor, obj, others, preview_state=self.server.preview_state)
+            dlg = EffectEditorDialog(self, self.vr_monitor, obj, others, preview_state=self.server.preview_state, exclude_serials=exclude_serials)
             self.wait_window(dlg)
             if dlg.result:
                 idx = next(i for i, ef in enumerate(self.cfg.effects) if ef.id == obj.id)

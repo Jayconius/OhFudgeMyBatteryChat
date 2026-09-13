@@ -2,7 +2,7 @@
 
 # Oh Fudge, My Battery Chat!
 
-[![Version](https://img.shields.io/badge/version-v1.1.0-blue)](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/v1.1.0)
+[![Version](https://img.shields.io/badge/version-v1.2.0-blue)](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/v1.2.0)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D6)](#)
 [![Requires](https://img.shields.io/badge/requires-SteamVR-orange)](#)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
@@ -27,7 +27,7 @@ pop-in alerts when something's running low - as a normal OBS Browser Source.
 1. Grab the exe from [Releases](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/latest)
    and run it with **SteamVR** already open.
 2. Click **Add** to add a device readout or a low-battery alert, then drag
-   it into place.
+   it into place. Double-click any row in the list later to edit it.
 3. Copy the URL shown at the top into OBS as a **Browser Source** (size
    1920x1080).
 
@@ -58,6 +58,11 @@ That's it - no Python or extra installs needed, the exe is self-contained.
 5. If a warning sound doesn't play, check this source's **"Control audio
    via OBS"** option - some OBS versions gate autoplay audio behind it.
 
+Once it's added, it stays in sync on its own - adding, editing, or removing
+a Device/Effect refreshes the already-open Browser Source automatically
+within about a second, no more manually right-clicking it to "Refresh cache
+of current page."
+
 </details>
 
 <details>
@@ -65,7 +70,9 @@ That's it - no Python or extra installs needed, the exe is self-contained.
 
 1. Click **Add > Add Device**.
 2. Pick the device from the list on the left (click **Refresh** if it's not
-   showing yet).
+   showing yet). Devices already used by another Device/Effect are hidden
+   from this list by default - tick **"Show already-added devices"** if you
+   need to reuse one anyway.
 3. Give it a label and a low-battery threshold (%).
 4. Choose **Always visible** (icon stays put, just swaps picture when low)
    or **Hidden until low** (pops in only once it's low).
@@ -108,6 +115,24 @@ That's it - no Python or extra installs needed, the exe is self-contained.
 
 </details>
 
+<details>
+<summary><strong>Testing without SteamVR (the Demo Simulator)</strong></summary>
+
+Grab the standalone [Demo Simulator](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/simulator-v1.0.0)
+if you want to record clips, take screenshots, or just try out Device/Effect
+setups without a headset on.
+
+1. Drop `OhFudgeMyBatteryChatSimulator.exe` in the **same folder** as
+   `OhFudgeMyBatteryChat.exe` so they share one Data folder, then run both.
+2. It lists your real configured Devices (or four generic placeholders plus
+   a 5-point full-body tracker rig if you haven't added any yet) with a
+   battery slider and a Connected checkbox for each.
+3. The real app picks this up automatically while both are running -
+   requires v1.2.0 or later. Close the Simulator (or just stop it) to hand
+   control back to real SteamVR, no restart needed.
+
+</details>
+
 ## Features
 
 - Live battery % for any SteamVR device, with a low-battery pop-in alert
@@ -119,6 +144,12 @@ That's it - no Python or extra installs needed, the exe is self-contained.
 - Drag-to-position with snap-to-align, plus several pop/fade animations
 - Nudge Groups keep multiple low-battery alerts from overlapping - lines
   them up automatically, oldest first
+- Dark/Light theme, auto-matching your Windows setting (or set it manually
+  in About)
+- The OBS Browser Source stays in sync automatically when you add/edit/
+  remove something - no manual refresh needed
+- A standalone [Demo Simulator](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/simulator-v1.0.0)
+  for testing/recording without SteamVR running
 - Optional startup check for new releases, off by default
 - Runs in English, Deutsch, Français, Español, 日本語, and Klingon
 

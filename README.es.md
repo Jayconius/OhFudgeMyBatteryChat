@@ -2,7 +2,7 @@
 
 # Oh Fudge, My Battery Chat!
 
-[![Version](https://img.shields.io/badge/version-v1.1.0-blue)](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/v1.1.0)
+[![Version](https://img.shields.io/badge/version-v1.2.0-blue)](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/v1.2.0)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D6)](#)
 [![Requires](https://img.shields.io/badge/requires-SteamVR-orange)](#)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
@@ -30,7 +30,8 @@ quedando bajo - como una fuente de navegador de OBS normal.
 1. Descarga el exe desde [Releases](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/latest)
    y ejecútalo con **SteamVR** ya abierto.
 2. Haz clic en **Añadir** para añadir una lectura de dispositivo o una
-   alerta de batería baja, y luego arrástrala a su sitio.
+   alerta de batería baja, y luego arrástrala a su sitio. Haz doble clic
+   en una fila de la lista más adelante para editarla.
 3. Copia la URL que aparece arriba en OBS como **fuente de navegador**
    (tamaño 1920x1080).
 
@@ -69,6 +70,11 @@ es autónomo.
    versiones de OBS bloquean el audio de reproducción automática si no
    está activada.
 
+Una vez añadida, se mantiene sincronizada sola - añadir, editar o eliminar
+un Dispositivo/Efecto actualiza automáticamente la fuente de navegador ya
+abierta en aproximadamente un segundo, sin necesidad de hacer clic derecho
+para "Actualizar caché de la página actual".
+
 </details>
 
 <details>
@@ -76,7 +82,9 @@ es autónomo.
 
 1. Haz clic en **Añadir > Añadir dispositivo**.
 2. Elige el dispositivo de la lista de la izquierda (haz clic en
-   **Actualizar** si todavía no aparece).
+   **Actualizar** si todavía no aparece). Los dispositivos ya usados por
+   otro Dispositivo/Efecto se ocultan por defecto - marca **"Mostrar
+   dispositivos ya añadidos"** si necesitas reutilizar uno de todos modos.
 3. Ponle una etiqueta y un umbral de batería baja (%).
 4. Elige **Siempre visible** (el icono se queda fijo, solo cambia la
    imagen cuando la batería baja) o **Oculto hasta que baja** (aparece
@@ -127,6 +135,28 @@ es autónomo.
 
 </details>
 
+<details>
+<summary><strong>Probar sin SteamVR (el Simulador de demostración)</strong></summary>
+
+Consigue el [Simulador de demostración](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/simulator-v1.0.0)
+independiente si quieres grabar clips, hacer capturas de pantalla, o
+simplemente probar configuraciones de Dispositivos/Efectos sin ponerte el
+casco.
+
+1. Coloca `OhFudgeMyBatteryChatSimulator.exe` en la **misma carpeta** que
+   `OhFudgeMyBatteryChat.exe` para que compartan una carpeta Data, y luego
+   ejecuta ambos.
+2. Lista tus Dispositivos realmente configurados (o cuatro marcadores de
+   posición genéricos más un conjunto de trackers de cuerpo completo de 5
+   puntos si aún no has añadido ninguno), cada uno con un control
+   deslizante de batería y una casilla "Conectado".
+3. La aplicación real lo detecta automáticamente mientras ambas se
+   ejecutan - requiere v1.2.0 o posterior. Cierra el Simulador (o
+   simplemente detenlo) para devolver el control al SteamVR real, sin
+   necesidad de reiniciar.
+
+</details>
+
 ## Características
 
 - Porcentaje de batería en directo para cualquier dispositivo SteamVR,
@@ -144,6 +174,13 @@ es autónomo.
 - Los grupos de desplazamiento (Nudge Groups) evitan que varias alertas
   de batería baja se superpongan - se alinean automáticamente, la más
   antigua primero
+- Tema claro/oscuro, adaptándose automáticamente a tu configuración de
+  Windows (o ajustable manualmente en Acerca de)
+- La fuente de navegador de OBS se mantiene sincronizada automáticamente
+  al añadir/editar/eliminar algo - sin necesidad de actualizar
+  manualmente
+- Un [Simulador de demostración](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/simulator-v1.0.0)
+  independiente para probar/grabar sin SteamVR en ejecución
 - Comprobación opcional de nuevas versiones al iniciar, desactivada por
   defecto
 - Funciona en inglés, alemán, francés, español, japonés y klingon

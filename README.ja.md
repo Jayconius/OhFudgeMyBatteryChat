@@ -2,7 +2,7 @@
 
 # Oh Fudge, My Battery Chat!
 
-[![Version](https://img.shields.io/badge/version-v1.1.0-blue)](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/v1.1.0)
+[![Version](https://img.shields.io/badge/version-v1.2.0-blue)](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/v1.2.0)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D6)](#)
 [![Requires](https://img.shields.io/badge/requires-SteamVR-orange)](#)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
@@ -28,7 +28,8 @@
 1. [Releases](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/latest)
    からexeを取得し、**SteamVR**を先に起動した状態で実行します。
 2. **追加**をクリックしてデバイス表示や低バッテリーアラートを追加し、
-   ドラッグして配置します。
+   ドラッグして配置します。後でリスト内の項目をダブルクリックすると
+   編集できます。
 3. 上部に表示されているURLをOBSに**ブラウザソース**としてコピーします
    （サイズ 1920x1080）。
 
@@ -62,6 +63,11 @@
    オプションを確認してください - OBSのバージョンによっては自動再生
    音声をこの設定でブロックすることがあります。
 
+一度追加すれば、あとは自動で同期されます - デバイス/エフェクトを追加・
+編集・削除すると、既に開いているブラウザソースが約1秒以内に自動で
+更新されます。「現在のページのキャッシュを更新」を手動で右クリックする
+必要はもうありません。
+
 </details>
 
 <details>
@@ -69,7 +75,9 @@
 
 1. **追加 > デバイスを追加**をクリックします。
 2. 左側のリストからデバイスを選びます（表示されない場合は**更新**を
-   クリック）。
+   クリック）。他のデバイス/エフェクトで既に使われているデバイスは
+   デフォルトでリストから非表示になります - どうしても再利用したい
+   場合は**「追加済みのデバイスを表示」**にチェックを入れてください。
 3. ラベルと低バッテリーのしきい値（%）を設定します。
 4. **常に表示**（アイコンは常に表示され、低下時に画像だけが切り替わる）
    か、**低下時のみ表示**（低下時にのみポップインする）を選びます。
@@ -113,6 +121,27 @@
 
 </details>
 
+<details>
+<summary><strong>SteamVRなしでテストする（デモシミュレーター）</strong></summary>
+
+ヘッドセットを装着せずにクリップの録画やスクリーンショットの撮影、
+デバイス/エフェクトの設定を試したい場合は、単体の
+[デモシミュレーター](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/simulator-v1.0.0)
+を入手してください。
+
+1. `OhFudgeMyBatteryChatSimulator.exe`を`OhFudgeMyBatteryChat.exe`と
+   **同じフォルダ**に置き、1つのDataフォルダを共有させてから両方を
+   起動します。
+2. 実際に設定済みのデバイスが一覧表示されます（まだ何も追加していない
+   場合は、4つの汎用プレースホルダーと5点式フルボディトラッカー構成が
+   代わりに表示されます）。それぞれにバッテリースライダーと
+   「Connected」チェックボックスがあります。
+3. 実際のアプリは、両方が起動している間は自動的にこれを検出します -
+   v1.2.0以降が必要です。シミュレーターを閉じる（または単に停止する）
+   と、再起動なしで実際のSteamVRに制御が戻ります。
+
+</details>
+
 ## 機能
 
 - 任意のSteamVRデバイスのバッテリー%をリアルタイム表示し、低下時には
@@ -126,6 +155,12 @@
   アニメーション
 - Nudge Groupsにより複数の低バッテリーアラートが重ならないよう自動的に
   整列（古いものから順に）
+- ダーク/ライトテーマ - Windowsの設定に自動追従（About画面から手動設定も
+  可能）
+- 何かを追加/編集/削除するとOBSブラウザソースが自動的に同期 - 手動更新は
+  不要
+- SteamVRなしでテスト/録画できる単体の
+  [デモシミュレーター](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/simulator-v1.0.0)
 - 起動時の新バージョン確認（任意、デフォルトは無効）
 - 英語、ドイツ語、フランス語、スペイン語、日本語、クリンゴン語に対応
 
