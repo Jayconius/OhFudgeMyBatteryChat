@@ -81,6 +81,16 @@ def _device_payload(snapshot):
     }
 
 
+_DEFAULT_LABEL_STYLE = dict(
+    font_family="Segoe UI", font_size_px=15, font_color="#ffffff", text_animation="none",
+    outline_enabled=False, outline_thickness_px=2, outline_color="#000000",
+)
+_DEFAULT_PERCENT_STYLE = dict(
+    font_family="Segoe UI", font_size_px=18, font_color="#ffffff", text_animation="none",
+    outline_enabled=False, outline_thickness_px=2, outline_color="#000000",
+)
+
+
 def _preview_payload(preview_state: PreviewState):
     p = preview_state.get()
     if not p or not p.get("active"):
@@ -102,6 +112,9 @@ def _preview_payload(preview_state: PreviewState):
         "label": p.get("label", "Preview"),
         "show_label": p.get("show_label", True),
         "show_percent": p.get("show_percent", True),
+        "label_style": {**_DEFAULT_LABEL_STYLE, **p.get("label_style", {})},
+        "percent_style": {**_DEFAULT_PERCENT_STYLE, **p.get("percent_style", {})},
+        "low_pic_animation": p.get("low_pic_animation", "none"),
         "low_src": pic_src,
         "text": p.get("text", ""),
         "text_position": p.get("text_position", "below"),
@@ -115,24 +128,51 @@ def _preview_payload(preview_state: PreviewState):
     }
 
 
-def _item_payload(item, defaults_by_class: dict):
+def _item_payload(item, defaults_by_class: dict, nudge_groups_by_id: dict):
     normal = config_mod.resolve_media(item.normal_image)
     low = config_mod.resolve_media(item.low_image)
     sound = config_mod.resolve_media(item.sound)
+    group = nudge_groups_by_id.get(item.nudge_group_id) if item.nudge_group_id else None
+    x_pct = group.x_pct if group else item.x_pct
+    y_pct = group.y_pct if group else item.y_pct
     return {
         "id": item.id,
         "label": item.label,
         "device_serial": item.device_serial,
-        "x_pct": item.x_pct,
-        "y_pct": item.y_pct,
+        "x_pct": x_pct,
+        "y_pct": y_pct,
         "width_px": item.width_px,
         "show_mode": item.show_mode,
         "low_threshold_pct": item.low_threshold_pct,
         "sound_cooldown_sec": item.sound_cooldown_sec,
         "show_label": item.show_label,
         "show_percent": item.show_percent,
+        "label_style": {
+            "font_family": item.label_font_family,
+            "font_size_px": item.label_font_size_px,
+            "font_color": item.label_font_color,
+            "text_animation": item.label_text_animation,
+            "outline_enabled": item.label_outline_enabled,
+            "outline_thickness_px": item.label_outline_thickness_px,
+            "outline_color": item.label_outline_color,
+        },
+        "percent_style": {
+            "font_family": item.percent_font_family,
+            "font_size_px": item.percent_font_size_px,
+            "font_color": item.percent_font_color,
+            "text_animation": item.percent_text_animation,
+            "outline_enabled": item.percent_outline_enabled,
+            "outline_thickness_px": item.percent_outline_thickness_px,
+            "outline_color": item.percent_outline_color,
+        },
+        "normal_pic_animation": item.normal_pic_animation,
+        "low_pic_animation": item.low_pic_animation,
         "enter_animation": item.enter_animation,
         "exit_animation": item.exit_animation,
+        "nudge_enabled": group is not None,
+        "nudge_group_id": item.nudge_group_id or "",
+        "nudge_direction": group.direction if group else "left",
+        "nudge_spacing_px": group.spacing_px if group else 0,
         "normal_src": f"/media/{item.id}/normal" if normal else defaults_by_class.get(item.device_class_hint, defaults_by_class.get("_generic", "")),
         "low_src": f"/media/{item.id}/low" if low else defaults_by_class.get("_low", ""),
         "sound_src": f"/media/{item.id}/sound" if sound else defaults_by_class.get("_beep", ""),
@@ -191,12 +231,12 @@ OVERLAY_PAGE_TEMPLATE = r"""<!doctype html>
   .item.always-mode.visible { opacity: 1; transform: scale(1); }
   /* "Hidden until low" device items and Effects: driven by JS-assigned keyframe animations. */
   .item.kf-driven { opacity: 0; }
+  /* Nudge-enabled items smoothly slide between slots instead of jumping. */
+  .item.nudge-enabled { transition: left 0.35s ease, top 0.35s ease; }
 
   .item.low img.pic, .item.low video.pic { animation: pulse 1s ease-in-out infinite; }
   .item img.pic, .item video.pic { width: 100%; height: auto; display: block; }
-  .item .label { color: #fff; font-size: 15px; font-weight: 600; margin-top: 4px; text-shadow: 0 1px 3px #000; }
-  .item .pct { color: #fff; font-size: 18px; font-weight: 700; text-shadow: 0 1px 3px #000; }
-  .item.low .pct { color: #ff5c5c; }
+  .item .label, .item .pct { text-shadow: 0 1px 3px #000; margin-top: 4px; }
   @keyframes pulse {
     0%, 100% { filter: drop-shadow(0 0 0 rgba(255,60,60,0)); }
     50% { filter: drop-shadow(0 0 10px rgba(255,60,60,0.9)); }
@@ -227,13 +267,13 @@ OVERLAY_PAGE_TEMPLATE = r"""<!doctype html>
   .effect-item .pic-wrap .pic { width: 100%; height: auto; display: block; }
   .effect-text { margin: 4px 0; text-shadow: 0 1px 3px rgba(0,0,0,0.7); white-space: nowrap; }
   .effect-text.pos-middle { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); margin: 0; }
-  .effect-text-inner { display: inline-block; }
+  .text-inner { display: inline-block; }
   @keyframes text-wobble { 0%, 100% { transform: rotate(0deg); } 25% { transform: rotate(-6deg); } 75% { transform: rotate(6deg); } }
   @keyframes text-shake  { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
   @keyframes text-pulse  { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.12); } }
-  .effect-text-inner.anim-wobble { animation: text-wobble 0.6s ease-in-out infinite; }
-  .effect-text-inner.anim-shake  { animation: text-shake 0.4s ease-in-out infinite; }
-  .effect-text-inner.anim-pulse  { animation: text-pulse 0.8s ease-in-out infinite; }
+  .text-inner.anim-wobble { animation: text-wobble 0.6s ease-in-out infinite; }
+  .text-inner.anim-shake  { animation: text-shake 0.4s ease-in-out infinite; }
+  .text-inner.anim-pulse  { animation: text-pulse 0.8s ease-in-out infinite; }
 </style>
 </head>
 <body>
@@ -265,6 +305,40 @@ const EXIT_DUR_MS = 450;
 
 function isVideoSrc(src) { return /\.webm($|\?)/i.test(src || ''); }
 
+// Idle animations a user can pick for a Device's Normal/Low picture, so a
+// custom static image isn't stuck looking boring. Reuses the same wobble/
+// shake/pulse keyframes as text styling. "none" clears any inline animation,
+// letting the automatic low-battery glow (.item.low .pic, in CSS) show
+// through undisturbed - picking a real animation for the Low picture
+// intentionally replaces that glow with the user's own choice instead.
+const PIC_ANIM_CSS = {
+  none: '',
+  wobble: 'text-wobble 0.6s ease-in-out infinite',
+  shake: 'text-shake 0.4s ease-in-out infinite',
+  pulse: 'text-pulse 0.8s ease-in-out infinite',
+};
+function applyPicAnimation(el, key) {
+  if (el) el.style.animation = PIC_ANIM_CSS[key] || '';
+}
+
+// Applies font/color/animation/outline styling to a text span. Shared by
+// Effect captions and Device Label/Battery % text so both get identical
+// customization behavior.
+function applyTextStyle(span, style) {
+  style = style || {};
+  span.className = 'text-inner anim-' + (style.text_animation || 'none');
+  span.style.fontFamily = style.font_family || 'Segoe UI';
+  span.style.fontSize = (style.font_size_px || 16) + 'px';
+  span.style.color = style.font_color || '#ffffff';
+  if (style.outline_enabled) {
+    span.style.webkitTextStroke = (style.outline_thickness_px || 2) + 'px ' + (style.outline_color || '#000000');
+    span.style.paintOrder = 'stroke fill';
+  } else {
+    span.style.webkitTextStroke = '';
+    span.style.paintOrder = '';
+  }
+}
+
 // Builds the DOM for one Effect (picture + optional styled caption). Reused
 // for real configured effects and for the GUI's live "Test Animation" preview.
 function buildEffectElement(cfg) {
@@ -285,15 +359,12 @@ function buildEffectElement(cfg) {
     textEl = document.createElement('div');
     textEl.className = 'effect-text pos-' + (cfg.text_position || 'below');
     const span = document.createElement('span');
-    span.className = 'effect-text-inner anim-' + (cfg.text_animation || 'none');
     span.textContent = cfg.text;
-    span.style.fontFamily = cfg.font_family || 'Segoe UI';
-    span.style.fontSize = (cfg.font_size_px || 22) + 'px';
-    span.style.color = cfg.font_color || '#ffffff';
-    if (cfg.outline_enabled) {
-      span.style.webkitTextStroke = (cfg.outline_thickness_px || 2) + 'px ' + (cfg.outline_color || '#000000');
-      span.style.paintOrder = 'stroke fill';
-    }
+    applyTextStyle(span, {
+      font_family: cfg.font_family, font_size_px: cfg.font_size_px, font_color: cfg.font_color,
+      text_animation: cfg.text_animation, outline_enabled: cfg.outline_enabled,
+      outline_thickness_px: cfg.outline_thickness_px, outline_color: cfg.outline_color,
+    });
     textEl.appendChild(span);
   }
 
@@ -311,26 +382,48 @@ function buildEffectElement(cfg) {
   return { el, pic };
 }
 
+let nudgeArrivalCounter = 0;
+
 for (const item of ITEMS) {
   const el = document.createElement('div');
   el.className = 'item ' + (item.show_mode === 'always' ? 'always-mode' : 'kf-driven');
+  if (item.nudge_enabled) el.classList.add('nudge-enabled');
   el.style.left = item.x_pct + '%';
   el.style.top = item.y_pct + '%';
   el.style.width = item.width_px + 'px';
   if (item.show_mode !== 'always') el.style.display = 'none';
 
   const isVideo = isVideoSrc(item.normal_src) || isVideoSrc(item.low_src);
-  const picTag = isVideo ? 'video' : 'img';
-  const picExtra = isVideo ? 'autoplay loop muted playsinline' : '';
-  el.innerHTML = `
-    <${picTag} class="pic" src="${item.normal_src}" ${picExtra}></${picTag}>
-    ${item.show_percent ? '<div class="pct">--%</div>' : ''}
-    ${item.show_label ? `<div class="label">${item.label}</div>` : ''}
-  `;
+  const pic = document.createElement(isVideo ? 'video' : 'img');
+  pic.className = 'pic';
+  pic.src = item.normal_src;
+  if (isVideo) { pic.autoplay = true; pic.loop = true; pic.muted = true; pic.playsInline = true; }
+  applyPicAnimation(pic, item.normal_pic_animation);
+  el.appendChild(pic);
+
+  let pctSpan = null;
+  if (item.show_percent) {
+    const pctDiv = document.createElement('div');
+    pctDiv.className = 'pct';
+    pctSpan = document.createElement('span');
+    pctSpan.textContent = '--%';
+    applyTextStyle(pctSpan, item.percent_style);
+    pctDiv.appendChild(pctSpan);
+    el.appendChild(pctDiv);
+  }
+  if (item.show_label) {
+    const labelDiv = document.createElement('div');
+    labelDiv.className = 'label';
+    const labelSpan = document.createElement('span');
+    labelSpan.textContent = item.label;
+    applyTextStyle(labelSpan, item.label_style);
+    labelDiv.appendChild(labelSpan);
+    el.appendChild(labelDiv);
+  }
   root.appendChild(el);
 
   const audio = item.sound_src ? new Audio(item.sound_src) : null;
-  state[item.id] = { lastLow: false, shown: false, lastSoundTs: 0, el, audio, pic: el.querySelector('.pic'), pct: el.querySelector('.pct') };
+  state[item.id] = { lastLow: false, shown: false, nudgeArrival: 0, lastSoundTs: 0, el, audio, pic, pct: pctSpan };
 }
 
 for (const effect of EFFECTS) {
@@ -396,13 +489,30 @@ function ensurePreviewEl(p) {
     previewEl = document.createElement('div');
     previewEl.className = 'item kf-driven low';
     const isVideo = isVideoSrc(p.low_src);
-    const tag = isVideo ? 'video' : 'img';
-    const extra = isVideo ? 'autoplay loop muted playsinline' : '';
-    previewEl.innerHTML = `
-      <${tag} class="pic low" src="${p.low_src}" ${extra}></${tag}>
-      ${p.show_percent ? '<div class="pct">low%</div>' : ''}
-      ${p.show_label ? `<div class="label">${p.label}</div>` : ''}
-    `;
+    const pic = document.createElement(isVideo ? 'video' : 'img');
+    pic.className = 'pic low';
+    pic.src = p.low_src;
+    if (isVideo) { pic.autoplay = true; pic.loop = true; pic.muted = true; pic.playsInline = true; }
+    applyPicAnimation(pic, p.low_pic_animation);
+    previewEl.appendChild(pic);
+    if (p.show_percent) {
+      const pctDiv = document.createElement('div');
+      pctDiv.className = 'pct';
+      const pctSpan = document.createElement('span');
+      pctSpan.textContent = 'low%';
+      applyTextStyle(pctSpan, p.percent_style);
+      pctDiv.appendChild(pctSpan);
+      previewEl.appendChild(pctDiv);
+    }
+    if (p.show_label) {
+      const labelDiv = document.createElement('div');
+      labelDiv.className = 'label';
+      const labelSpan = document.createElement('span');
+      labelSpan.textContent = p.label;
+      applyTextStyle(labelSpan, p.label_style);
+      labelDiv.appendChild(labelSpan);
+      previewEl.appendChild(labelDiv);
+    }
   }
   previewEl.style.left = p.x_pct + '%';
   previewEl.style.top = p.y_pct + '%';
@@ -435,6 +545,35 @@ function runPreviewLoop(p) {
   cycle();
 }
 
+// Groups currently-visible Nudge-enabled Device items by anchor position +
+// direction, then lines them up in arrival order (newest = original spot,
+// older ones pushed back) - recomputed fresh every poll tick, so both new
+// arrivals and departures (re-compacting the line) fall out naturally.
+function applyNudgeLayout() {
+  const groups = {};
+  for (const item of ITEMS) {
+    if (!item.nudge_enabled || !item.nudge_group_id) continue;
+    const s = state[item.id];
+    if (!s.shown) continue;
+    const key = item.nudge_group_id;
+    (groups[key] = groups[key] || []).push({ item, s });
+  }
+  for (const key in groups) {
+    const members = groups[key];
+    members.sort((a, b) => b.s.nudgeArrival - a.s.nudgeArrival); // newest first = slot 0
+    members.forEach((m, slot) => {
+      const pitchPx = m.item.width_px + m.item.nudge_spacing_px;
+      let dxPx = 0, dyPx = 0;
+      if (m.item.nudge_direction === 'left') dxPx = -slot * pitchPx;
+      else if (m.item.nudge_direction === 'right') dxPx = slot * pitchPx;
+      else if (m.item.nudge_direction === 'up') dyPx = -slot * pitchPx;
+      else if (m.item.nudge_direction === 'down') dyPx = slot * pitchPx;
+      m.s.el.style.left = (m.item.x_pct + dxPx / 1920 * 100) + '%';
+      m.s.el.style.top = (m.item.y_pct + dyPx / 1080 * 100) + '%';
+    });
+  }
+}
+
 async function poll() {
   try {
     const res = await fetch('/api/status', { cache: 'no-store' });
@@ -454,6 +593,7 @@ async function poll() {
 
       const wantSrc = isLow ? item.low_src : item.normal_src;
       if (s.pic && s.pic.getAttribute('src') !== wantSrc) s.pic.setAttribute('src', wantSrc);
+      applyPicAnimation(s.pic, isLow ? item.low_pic_animation : item.normal_pic_animation);
       if (s.pct) s.pct.textContent = (battery === null || battery === undefined) ? '--%' : Math.round(battery) + '%';
       s.el.classList.toggle('low', isLow);
 
@@ -466,6 +606,7 @@ async function poll() {
           const enterKey = ENTER_KEYFRAMES[item.enter_animation] || ENTER_KEYFRAMES.pop_bottom;
           s.el.style.animation = `${enterKey} ${ENTER_DUR_MS}ms cubic-bezier(0.34,1.56,0.64,1) forwards`;
           s.shown = true;
+          s.nudgeArrival = ++nudgeArrivalCounter;
         } else if (!isLow && s.shown) {
           const exitKey = EXIT_KEYFRAMES[item.exit_animation] || EXIT_KEYFRAMES.fade;
           s.el.style.animation = `${exitKey} ${EXIT_DUR_MS}ms ease forwards`;
@@ -483,6 +624,8 @@ async function poll() {
       }
       s.lastLow = isLow;
     }
+
+    applyNudgeLayout();
 
     for (const effect of EFFECTS) {
       const s = effectState[effect.id];
@@ -626,7 +769,8 @@ class _Handler(BaseHTTPRequestHandler):
         cfg = self.server.get_config()
         from . import default_assets
         default_assets.ensure_defaults()
-        items_json = json.dumps([_item_payload(it, DEFAULTS_BY_CLASS) for it in cfg.items])
+        nudge_groups_by_id = {g.id: g for g in cfg.nudge_groups}
+        items_json = json.dumps([_item_payload(it, DEFAULTS_BY_CLASS, nudge_groups_by_id) for it in cfg.items])
         effects_json = json.dumps([_effect_payload(ef, DEFAULTS_BY_CLASS) for ef in cfg.effects])
         html = OVERLAY_PAGE_TEMPLATE.replace("__APP_TITLE__", APP_TITLE)
         html = html.replace("__ITEMS_JSON__", items_json)

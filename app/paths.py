@@ -72,3 +72,23 @@ def bundled_resource(relative_path: str) -> str:
     """Resolve a path to a resource bundled into the PyInstaller onefile exe."""
     base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
     return os.path.join(base, relative_path)
+
+
+def device_icons_dir() -> str:
+    """Where the bundled device-icon pack gets unpacked to on first run -
+    a subfolder of the user-visible Data/assets folder, so it's easy to find
+    and safe to delete/replace like any other user-facing asset."""
+    path = os.path.join(assets_dir(), "device icons")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def bundled_device_icons_source() -> str:
+    """Where the device-icon pack ships from: inside the PyInstaller onefile
+    exe's extracted temp dir when frozen ("assets;device_icons" in the build
+    command), or the project's own assets/ folder when running from source."""
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        return os.path.join(meipass, "device_icons")
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(project_root, "assets")

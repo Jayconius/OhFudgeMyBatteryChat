@@ -59,6 +59,12 @@ TEXT_ANIMATION_OPTIONS = {
     "shake": "Shake",
     "pulse": "Pulse",
 }
+NUDGE_DIRECTION_OPTIONS = {
+    "left": "Left",
+    "right": "Right",
+    "up": "Up",
+    "down": "Down",
+}
 
 
 @dataclasses.dataclass
@@ -74,12 +80,33 @@ class OverlayItem:
     low_threshold_pct: int = 20
     normal_image: Optional[str] = None  # path, relative to app-data dir, or None -> use default
     low_image: Optional[str] = None
+    normal_pic_animation: str = "none"  # see TEXT_ANIMATION_OPTIONS - idle animation on the Normal Picture
+    low_pic_animation: str = "none"     # idle animation on the Low Battery Picture; "none" keeps the automatic low-battery glow
     sound: Optional[str] = None
     sound_cooldown_sec: int = 300
     show_label: bool = True
     show_percent: bool = True
     enter_animation: str = "pop_bottom"  # only used when show_mode == "low_only"
     exit_animation: str = "fade"         # only used when show_mode == "low_only"
+    nudge_group_id: Optional[str] = None  # if set, position/direction/spacing come from that NudgeGroup
+
+    # Label text styling (only rendered when show_label is True)
+    label_font_family: str = "Segoe UI"
+    label_font_size_px: int = 15
+    label_font_color: str = "#ffffff"
+    label_text_animation: str = "none"   # see TEXT_ANIMATION_OPTIONS
+    label_outline_enabled: bool = False
+    label_outline_thickness_px: int = 2
+    label_outline_color: str = "#000000"
+
+    # Battery % text styling (only rendered when show_percent is True)
+    percent_font_family: str = "Segoe UI"
+    percent_font_size_px: int = 18
+    percent_font_color: str = "#ffffff"
+    percent_text_animation: str = "none"  # see TEXT_ANIMATION_OPTIONS
+    percent_outline_enabled: bool = False
+    percent_outline_thickness_px: int = 2
+    percent_outline_color: str = "#000000"
 
     def to_dict(self):
         return dataclasses.asdict(self)
@@ -88,6 +115,28 @@ class OverlayItem:
     def from_dict(d: dict) -> "OverlayItem":
         known = {f.name for f in dataclasses.fields(OverlayItem)}
         return OverlayItem(**{k: v for k, v in d.items() if k in known})
+
+
+@dataclasses.dataclass
+class NudgeGroup:
+    """A named, reusable shared position for Nudge: every Device item
+    assigned to a group renders at the group's position (not its own),
+    and shares one direction/spacing - so moving one member moves them all,
+    and adding a device to a group needs no manual lining-up."""
+    id: str
+    name: str
+    x_pct: float = 50.0
+    y_pct: float = 80.0
+    direction: str = "left"   # see NUDGE_DIRECTION_OPTIONS
+    spacing_px: int = 20
+
+    def to_dict(self):
+        return dataclasses.asdict(self)
+
+    @staticmethod
+    def from_dict(d: dict) -> "NudgeGroup":
+        known = {f.name for f in dataclasses.fields(NudgeGroup)}
+        return NudgeGroup(**{k: v for k, v in d.items() if k in known})
 
 
 @dataclasses.dataclass
@@ -137,8 +186,10 @@ class AppConfig:
     poll_interval_sec: float = 1.0
     language: str = "en"
     dismissed_battery_notice: bool = False
-    items: list = dataclasses.field(default_factory=list)     # list[OverlayItem]
-    effects: list = dataclasses.field(default_factory=list)   # list[EffectItem]
+    check_for_updates: bool = False
+    items: list = dataclasses.field(default_factory=list)         # list[OverlayItem]
+    effects: list = dataclasses.field(default_factory=list)       # list[EffectItem]
+    nudge_groups: list = dataclasses.field(default_factory=list)  # list[NudgeGroup]
 
     def to_dict(self):
         return {
@@ -147,8 +198,10 @@ class AppConfig:
             "poll_interval_sec": self.poll_interval_sec,
             "language": self.language,
             "dismissed_battery_notice": self.dismissed_battery_notice,
+            "check_for_updates": self.check_for_updates,
             "items": [it.to_dict() for it in self.items],
             "effects": [ef.to_dict() for ef in self.effects],
+            "nudge_groups": [g.to_dict() for g in self.nudge_groups],
         }
 
     @staticmethod
@@ -159,9 +212,11 @@ class AppConfig:
             poll_interval_sec=d.get("poll_interval_sec", 1.0),
             language=d.get("language", "en"),
             dismissed_battery_notice=d.get("dismissed_battery_notice", False),
+            check_for_updates=d.get("check_for_updates", False),
         )
         cfg.items = [OverlayItem.from_dict(it) for it in d.get("items", [])]
         cfg.effects = [EffectItem.from_dict(ef) for ef in d.get("effects", [])]
+        cfg.nudge_groups = [NudgeGroup.from_dict(g) for g in d.get("nudge_groups", [])]
         return cfg
 
 
@@ -189,6 +244,7 @@ def new_item_id() -> str:
 
 
 new_effect_id = new_item_id  # same scheme; separate name for readability at call sites
+new_group_id = new_item_id
 
 
 def import_media(item_id: str, source_path: str, kind: str) -> str:

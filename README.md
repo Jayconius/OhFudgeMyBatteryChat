@@ -2,7 +2,7 @@
 
 # Oh Fudge, My Battery Chat!
 
-[![Version](https://img.shields.io/badge/version-v1.0-blue)](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/v1.0)
+[![Version](https://img.shields.io/badge/version-v1.1.0-blue)](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/v1.1.0)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D6)](#)
 [![Requires](https://img.shields.io/badge/requires-SteamVR-orange)](#)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
@@ -69,11 +69,20 @@ That's it - no Python or extra installs needed, the exe is self-contained.
    or **Hidden until low** (pops in only once it's low).
 5. **Pictures & Sound**: pick a normal picture and a low-battery picture,
    and a warning sound - or skip any of these to use the built-in defaults.
-6. **Animation**: if you chose "Hidden until low," pick how it pops in and
+   Clicking **Choose...** opens straight to `Data\assets\device icons`, a
+   pack of illustrated headset/controller/tracker art bundled with the app -
+   pick from those or browse to your own image/GIF/WebM.
+6. **Picture Animation**: give the Normal and/or Low Battery picture its own
+   idle Wobble/Shake/Pulse animation, so a static image isn't just sitting
+   there. Picking one for the Low picture replaces the automatic red
+   pulse-glow with your choice.
+7. **Label Text / Battery % Text**: each gets its own font, size, color,
+   animation, and outline - independent of one another.
+8. **Animation**: if you chose "Hidden until low," pick how it pops in and
    out, and try it with **Test Animation** before saving.
-7. **Placement**: drag it into position on the preview canvas - it snaps
+9. **Placement**: drag it into position on the preview canvas - it snaps
    to align with anything else you've already placed.
-8. Click **Save**.
+10. Click **Save**.
 
 </details>
 
@@ -100,15 +109,22 @@ That's it - no Python or extra installs needed, the exe is self-contained.
 ## Features
 
 - Live battery % for any SteamVR device, with a low-battery pop-in alert
-- Use your own pictures/GIFs/videos and sounds, or the built-in defaults
+- Use your own pictures/GIFs/videos and sounds, plus a bundled pack of
+  illustrated device art - or the built-in defaults
+- Independent font/size/color/animation/outline customization for Label
+  Text, Battery % Text, and Overlay Effect captions
+- Optional idle animations (Wobble/Shake/Pulse) for device pictures
 - Drag-to-position with snap-to-align, plus several pop/fade animations
+- Nudge Groups keep multiple low-battery alerts from overlapping - lines
+  them up automatically, oldest first
+- Optional startup check for new releases, off by default
 - Runs in English, Deutsch, Français, Español, 日本語, and Klingon
 
 ## Building from source
 
 ```bash
 pip install -r requirements.txt
-pyinstaller --onefile --windowed --name "OhFudgeMyBatteryChat" --collect-all openvr --add-data "app/fonts;fonts" main.py
+pyinstaller --onefile --windowed --name "OhFudgeMyBatteryChat" --collect-all openvr --add-data "app/fonts;fonts" --add-data "assets;device_icons" main.py
 ```
 
 ## License

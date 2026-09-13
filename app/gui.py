@@ -14,21 +14,26 @@ page while their editor dialog is open. The UI itself can be switched between
 several languages from the top bar.
 """
 import os
+import threading
 import tkinter as tk
 import webbrowser
 from tkinter import colorchooser, filedialog, messagebox, ttk
+from types import SimpleNamespace
 
+from . import bundled_icons
 from . import config as config_mod
 from . import default_assets
 from . import i18n
+from . import paths
 from . import piqad
+from . import update_check
 from .server import ServerController
 from .vr_monitor import VRMonitor
 
 APP_TITLE = "Oh Fudge, My Battery Chat!"  # the pun stays the same in every language
 APP_VERSION = "1.0.0"
-APP_AUTHOR = "Your Name Here"  # TODO: replace with your name/handle
-APP_GITHUB_URL = "https://github.com/yourusername/oh-fudge-my-battery-chat"  # TODO: replace with your real repo
+APP_AUTHOR = "Jayconius"
+APP_GITHUB_URL = "https://github.com/Jayconius/OhFudgeMyBatteryChat"
 
 DEFAULT_FONT_FAMILY = "Segoe UI"
 
@@ -167,6 +172,7 @@ def _make_color_button(parent, initial_hex, on_change):
 class AboutDialog(tk.Toplevel):
     def __init__(self, parent):
         super().__init__(parent)
+        self.main_window = parent
         self.title(i18n.t("about_title"))
         self.resizable(False, False)
 
@@ -186,10 +192,21 @@ class AboutDialog(tk.Toplevel):
         link.grid(row=2, column=1, sticky="w")
         link.bind("<Button-1>", lambda e: webbrowser.open(APP_GITHUB_URL))
 
+        self.check_updates_var = tk.BooleanVar(value=parent.cfg.check_for_updates)
+        ttk.Checkbutton(
+            frm, text=i18n.t_piqad("chk_check_updates"),
+            variable=self.check_updates_var, command=self._toggle_check_updates,
+        ).pack(anchor="w", pady=(12, 0))
+
         ttk.Button(frm, text=i18n.t_piqad("about_close"), command=self.destroy).pack(anchor="e", pady=(14, 0))
 
         self.grab_set()
         self.transient(parent)
+
+    def _toggle_check_updates(self):
+        self.main_window.cfg.check_for_updates = self.check_updates_var.get()
+        config_mod.save(self.main_window.cfg)
+        self.main_window._maybe_check_for_updates()
 
 
 class FirstRunNoticeDialog(tk.Toplevel):
@@ -214,6 +231,7 @@ class FirstRunNoticeDialog(tk.Toplevel):
         self.body_frame = ttk.Frame(self)
         self.body_frame.pack(padx=18, pady=16)
         self._dont_show_state = False
+        self._check_updates_state = self.main_window.cfg.check_for_updates
         self._build_body()
 
         self.protocol("WM_DELETE_WINDOW", self._on_ok)
@@ -231,6 +249,9 @@ class FirstRunNoticeDialog(tk.Toplevel):
         self.dont_show_var = tk.BooleanVar(value=self._dont_show_state)
         ttk.Checkbutton(frm, text=i18n.t_piqad("chk_dont_show_again"), variable=self.dont_show_var).pack(anchor="w")
 
+        self.check_updates_var = tk.BooleanVar(value=self._check_updates_state)
+        ttk.Checkbutton(frm, text=i18n.t_piqad("chk_check_updates"), variable=self.check_updates_var).pack(anchor="w", pady=(4, 0))
+
         ttk.Button(frm, text=i18n.t_piqad("btn_ok"), command=self._on_ok).pack(anchor="e", pady=(14, 0))
 
     def _on_language_change(self, event=None):
@@ -244,10 +265,11 @@ class FirstRunNoticeDialog(tk.Toplevel):
         config_mod.save(self.main_window.cfg)
         self._lang_changed = True
         self._dont_show_state = self.dont_show_var.get()
+        self._check_updates_state = self.check_updates_var.get()
         self._build_body()
 
     def _on_ok(self):
-        self.on_dismiss(self.dont_show_var.get())
+        self.on_dismiss(self.dont_show_var.get(), self.check_updates_var.get())
         self.destroy()
         if self._lang_changed:
             self.main_window._rebuild_ui()
@@ -319,7 +341,7 @@ class MediaPickerMixin:
     """Shared 'choose a file, show its name, test sounds' row builder.
     Requires self._pending_media (dict kind -> chosen path or None)."""
 
-    def _media_row(self, parent, row, text, kind, current_rel, sound=False):
+    def _media_row(self, parent, row, text, kind, current_rel, sound=False, anim_default=None, anim_change_cb=None):
         ttk.Label(parent, text=text).grid(row=row, column=0, sticky="w", padx=6, pady=3)
         current_full = config_mod.resolve_media(current_rel)
         display = os.path.basename(current_full) if current_full else "(default)"
@@ -328,11 +350,26 @@ class MediaPickerMixin:
         ttk.Button(parent, text=i18n.t_piqad("btn_choose"), command=lambda: self._choose_media(kind, lbl, sound)).grid(row=row, column=2, padx=4)
         if sound:
             ttk.Button(parent, text=i18n.t_piqad("btn_test"), command=lambda: self._test_sound(kind, current_rel)).grid(row=row, column=3, padx=4)
-        return lbl
+
+        anim_combo = anim_keys = None
+        if anim_default is not None:
+            anim_keys = list(config_mod.TEXT_ANIMATION_OPTIONS.keys())
+            ttk.Label(parent, text=i18n.t_piqad("lbl_animation")).grid(row=row, column=4, sticky="w", padx=(14, 4))
+            anim_combo = ttk.Combobox(parent, values=[i18n.t_piqad(f"textanim_{k}") for k in anim_keys], state="readonly", width=10)
+            start = anim_default if anim_default in anim_keys else "none"
+            anim_combo.current(anim_keys.index(start))
+            anim_combo.grid(row=row, column=5, padx=4)
+            if anim_change_cb:
+                anim_combo.bind("<<ComboboxSelected>>", lambda e: anim_change_cb())
+
+        return lbl, anim_combo, anim_keys
 
     def _choose_media(self, kind, label_widget, sound):
         types = SOUND_FILETYPES if sound else IMAGE_FILETYPES
-        path = filedialog.askopenfilename(title=i18n.t("btn_choose"), filetypes=types, parent=self)
+        kwargs = {}
+        if kind in ("normal", "low"):
+            kwargs["initialdir"] = paths.device_icons_dir()
+        path = filedialog.askopenfilename(title=i18n.t("btn_choose"), filetypes=types, parent=self, **kwargs)
         if not path:
             return
         self._pending_media[kind] = path
@@ -535,13 +572,14 @@ class PreviewMixin:
 
 
 class ItemEditorDialog(DeviceSelectorMixin, MediaPickerMixin, AnimationPickerMixin, PositionCanvasMixin, PreviewMixin, tk.Toplevel):
-    def __init__(self, parent, vr_monitor: VRMonitor, item: config_mod.OverlayItem, other_items, preview_state=None):
+    def __init__(self, parent, vr_monitor: VRMonitor, item: config_mod.OverlayItem, other_items, preview_state=None, nudge_groups=None):
         super().__init__(parent)
         self.title(i18n.t("dlg_title_device"))
         self.resizable(False, False)
         self.vr_monitor = vr_monitor
         self.item = item
         self.other_items = other_items
+        self.nudge_groups = nudge_groups if nudge_groups is not None else []
         self.result = None
         self._init_preview(preview_state)
         self._pending_media = {"normal": None, "low": None, "sound": None}
@@ -573,33 +611,187 @@ class ItemEditorDialog(DeviceSelectorMixin, MediaPickerMixin, AnimationPickerMix
         ttk.Radiobutton(basics, text=i18n.t_piqad("radio_always"), variable=self.mode_var, value="always", command=self._update_anim_frame_visibility).grid(row=2, column=0, columnspan=3, sticky="w", padx=6)
         ttk.Radiobutton(basics, text=i18n.t_piqad("radio_low_only"), variable=self.mode_var, value="low_only", command=self._update_anim_frame_visibility).grid(row=3, column=0, columnspan=3, sticky="w", padx=6)
 
-        self.show_label_var = tk.BooleanVar(value=self.item.show_label)
-        self.show_percent_var = tk.BooleanVar(value=self.item.show_percent)
-        ttk.Checkbutton(basics, text=i18n.t_piqad("chk_show_label"), variable=self.show_label_var).grid(row=4, column=0, sticky="w", padx=6)
-        ttk.Checkbutton(basics, text=i18n.t_piqad("chk_show_percent"), variable=self.show_percent_var).grid(row=4, column=1, sticky="w", padx=6)
-
         self.anim_frame = self._build_animation_frame(self, i18n.t_piqad("frame_pop_animation_device"), self.item.enter_animation, self.item.exit_animation)
         self.anim_frame.grid(row=2, column=0, columnspan=2, sticky="ew", **pad)
 
-        for var in (self.show_label_var, self.show_percent_var):
-            var.trace_add("write", lambda *a: self._push_preview_if_active())
+        self.nudge_frame = self._build_nudge_frame(self)
+        self.nudge_frame.grid(row=3, column=0, columnspan=2, sticky="ew", **pad)
+
         self.label_entry.bind("<KeyRelease>", lambda e: self._push_preview_if_active())
 
+        caption_frame = ttk.LabelFrame(self, text=i18n.t_piqad("frame_caption"))
+        caption_frame.grid(row=4, column=0, columnspan=2, sticky="ew", **pad)
+        self.label_style = self._build_text_style_block(
+            caption_frame, row=0, title_key="frame_label_style", show_key="chk_show_label",
+            show_default=self.item.show_label, prefix_defaults=dict(
+                font_family=self.item.label_font_family, font_size_px=self.item.label_font_size_px,
+                font_color=self.item.label_font_color, text_animation=self.item.label_text_animation,
+                outline_enabled=self.item.label_outline_enabled, outline_thickness_px=self.item.label_outline_thickness_px,
+                outline_color=self.item.label_outline_color,
+            ),
+        )
+        self.percent_style = self._build_text_style_block(
+            caption_frame, row=5, title_key="frame_percent_style", show_key="chk_show_percent",
+            show_default=self.item.show_percent, prefix_defaults=dict(
+                font_family=self.item.percent_font_family, font_size_px=self.item.percent_font_size_px,
+                font_color=self.item.percent_font_color, text_animation=self.item.percent_text_animation,
+                outline_enabled=self.item.percent_outline_enabled, outline_thickness_px=self.item.percent_outline_thickness_px,
+                outline_color=self.item.percent_outline_color,
+            ),
+        )
+
         media = ttk.LabelFrame(self, text=i18n.t_piqad("frame_media"))
-        media.grid(row=3, column=0, columnspan=2, sticky="ew", **pad)
-        self._media_row(media, 0, i18n.t_piqad("lbl_normal_pic"), "normal", self.item.normal_image)
-        self._media_row(media, 1, i18n.t_piqad("lbl_low_pic"), "low", self.item.low_image)
+        media.grid(row=5, column=0, columnspan=2, sticky="ew", **pad)
+        _, self.normal_anim_combo, self.normal_anim_keys = self._media_row(
+            media, 0, i18n.t_piqad("lbl_normal_pic"), "normal", self.item.normal_image,
+            anim_default=self.item.normal_pic_animation, anim_change_cb=self._push_preview_if_active,
+        )
+        _, self.low_anim_combo, self.low_anim_keys = self._media_row(
+            media, 1, i18n.t_piqad("lbl_low_pic"), "low", self.item.low_image,
+            anim_default=self.item.low_pic_animation, anim_change_cb=self._push_preview_if_active,
+        )
         self._media_row(media, 2, i18n.t_piqad("lbl_warning_sound"), "sound", self.item.sound, sound=True)
 
-        pos_frame = self._build_position_frame(self, self.item.id, self.item.x_pct, self.item.y_pct, self.item.width_px)
-        pos_frame.grid(row=4, column=0, columnspan=2, sticky="ew", **pad)
+        start_group = self._find_group(self.item.nudge_group_id)
+        start_x = start_group.x_pct if start_group else self.item.x_pct
+        start_y = start_group.y_pct if start_group else self.item.y_pct
+        pos_frame = self._build_position_frame(self, self.item.id, start_x, start_y, self.item.width_px)
+        pos_frame.grid(row=6, column=0, columnspan=2, sticky="ew", **pad)
 
         btns = ttk.Frame(self)
-        btns.grid(row=5, column=0, columnspan=2, sticky="e", padx=8, pady=10)
+        btns.grid(row=7, column=0, columnspan=2, sticky="e", padx=8, pady=10)
         ttk.Button(btns, text=i18n.t_piqad("btn_cancel"), command=self._on_cancel).pack(side="right", padx=4)
         ttk.Button(btns, text=i18n.t_piqad("btn_save"), command=self._on_save).pack(side="right", padx=4)
 
         self._update_anim_frame_visibility()
+
+    def _build_text_style_block(self, parent, row, title_key, show_key, show_default, prefix_defaults):
+        """One customizable text element (Label or Battery %): show toggle,
+        font, size, color, animation, and outline. Returns a dict of the
+        widgets/vars needed to read values back on save."""
+        ttk.Label(parent, text=i18n.t_piqad(title_key), font=(_chrome_font_family(), 9, "bold")).grid(row=row, column=0, columnspan=6, sticky="w", padx=6, pady=(8, 0))
+
+        show_var = tk.BooleanVar(value=show_default)
+        show_chk = ttk.Checkbutton(parent, text=i18n.t_piqad(show_key), variable=show_var)
+        show_chk.grid(row=row + 1, column=0, columnspan=2, sticky="w", padx=6)
+
+        ttk.Label(parent, text=i18n.t_piqad("lbl_font")).grid(row=row + 2, column=0, sticky="w", padx=6, pady=2)
+        font_combo = ttk.Combobox(parent, values=FONT_CHOICES, state="normal", width=14)
+        font_combo.set(prefix_defaults["font_family"])
+        font_combo.grid(row=row + 2, column=1, sticky="w", padx=6)
+
+        ttk.Label(parent, text=i18n.t_piqad("lbl_size")).grid(row=row + 2, column=2, sticky="w", padx=6)
+        size_var = tk.IntVar(value=prefix_defaults["font_size_px"])
+        ttk.Spinbox(parent, from_=6, to=96, textvariable=size_var, width=5).grid(row=row + 2, column=3, sticky="w", padx=6)
+
+        ttk.Label(parent, text=i18n.t_piqad("lbl_font_color")).grid(row=row + 2, column=4, sticky="w", padx=6)
+        color_btn, color_state = _make_color_button(parent, prefix_defaults["font_color"], self._push_preview_if_active)
+        color_btn.grid(row=row + 2, column=5, sticky="w", padx=6)
+
+        ttk.Label(parent, text=i18n.t_piqad("lbl_animation")).grid(row=row + 3, column=0, sticky="w", padx=6, pady=2)
+        anim_keys = list(config_mod.TEXT_ANIMATION_OPTIONS.keys())
+        anim_combo = ttk.Combobox(parent, values=[i18n.t_piqad(f"textanim_{k}") for k in anim_keys], state="readonly", width=12)
+        start_anim = prefix_defaults["text_animation"] if prefix_defaults["text_animation"] in anim_keys else "none"
+        anim_combo.current(anim_keys.index(start_anim))
+        anim_combo.grid(row=row + 3, column=1, sticky="w", padx=6)
+
+        outline_var = tk.BooleanVar(value=prefix_defaults["outline_enabled"])
+        ttk.Checkbutton(parent, text=i18n.t_piqad("chk_outline"), variable=outline_var).grid(row=row + 3, column=2, sticky="w", padx=6)
+
+        ttk.Label(parent, text=i18n.t_piqad("lbl_thickness")).grid(row=row + 3, column=3, sticky="w", padx=6)
+        thickness_var = tk.IntVar(value=prefix_defaults["outline_thickness_px"])
+        ttk.Spinbox(parent, from_=1, to=10, textvariable=thickness_var, width=4).grid(row=row + 3, column=4, sticky="w", padx=6)
+
+        outline_color_btn, outline_color_state = _make_color_button(parent, prefix_defaults["outline_color"], self._push_preview_if_active)
+        outline_color_btn.grid(row=row + 3, column=5, sticky="w", padx=6)
+
+        show_var.trace_add("write", lambda *a: self._push_preview_if_active())
+        font_combo.bind("<<ComboboxSelected>>", lambda e: self._push_preview_if_active())
+        font_combo.bind("<KeyRelease>", lambda e: self._push_preview_if_active())
+        anim_combo.bind("<<ComboboxSelected>>", lambda e: self._push_preview_if_active())
+
+        return {
+            "show_var": show_var, "font_combo": font_combo, "size_var": size_var, "color_state": color_state,
+            "anim_combo": anim_combo, "anim_keys": anim_keys, "outline_var": outline_var,
+            "thickness_var": thickness_var, "outline_color_state": outline_color_state,
+        }
+
+    @staticmethod
+    def _read_text_style(style):
+        return dict(
+            font_family=style["font_combo"].get() or "Segoe UI",
+            font_size_px=style["size_var"].get(),
+            font_color=style["color_state"]["hex"],
+            text_animation=style["anim_keys"][style["anim_combo"].current()],
+            outline_enabled=style["outline_var"].get(),
+            outline_thickness_px=style["thickness_var"].get(),
+            outline_color=style["outline_color_state"]["hex"],
+        )
+
+    def _find_group(self, group_id):
+        if not group_id:
+            return None
+        return next((g for g in self.nudge_groups if g.id == group_id), None)
+
+    def _build_nudge_frame(self, parent):
+        frame = ttk.LabelFrame(parent, text=i18n.t_piqad("frame_nudge"))
+
+        current_group = self._find_group(self.item.nudge_group_id)
+
+        self.nudge_enabled_var = tk.BooleanVar(value=current_group is not None)
+        ttk.Checkbutton(
+            frame, text=i18n.t_piqad("chk_nudge_enabled"), variable=self.nudge_enabled_var,
+            command=self._update_nudge_controls_state,
+        ).grid(row=0, column=0, columnspan=4, sticky="w", padx=6, pady=(3, 0))
+
+        ttk.Label(frame, text=i18n.t_piqad("lbl_nudge_group")).grid(row=1, column=0, sticky="w", padx=6, pady=3)
+        group_names = [g.name for g in self.nudge_groups]
+        self.nudge_group_combo = ttk.Combobox(frame, values=group_names, width=22)
+        self.nudge_group_combo.set(current_group.name if current_group else "")
+        self.nudge_group_combo.grid(row=1, column=1, columnspan=3, sticky="w", padx=6, pady=3)
+        self.nudge_group_combo.bind("<<ComboboxSelected>>", self._on_nudge_group_picked)
+
+        ttk.Label(frame, text=i18n.t_piqad("hint_nudge"), foreground="#666", wraplength=460, justify="left").grid(row=2, column=0, columnspan=4, sticky="w", padx=6)
+
+        ttk.Label(frame, text=i18n.t_piqad("lbl_nudge_direction")).grid(row=3, column=0, sticky="w", padx=6, pady=3)
+        self.nudge_direction_keys = list(config_mod.NUDGE_DIRECTION_OPTIONS.keys())
+        self.nudge_direction_combo = ttk.Combobox(frame, values=[i18n.t_piqad(f"nudgedir_{k}") for k in self.nudge_direction_keys], state="readonly", width=10)
+        start = (current_group.direction if current_group else "left")
+        start = start if start in self.nudge_direction_keys else "left"
+        self.nudge_direction_combo.current(self.nudge_direction_keys.index(start))
+        self.nudge_direction_combo.grid(row=3, column=1, sticky="w", padx=6)
+
+        ttk.Label(frame, text=i18n.t_piqad("lbl_nudge_spacing")).grid(row=3, column=2, sticky="w", padx=6)
+        self.nudge_spacing_var = tk.IntVar(value=current_group.spacing_px if current_group else 20)
+        self.nudge_spacing_spin = ttk.Spinbox(frame, from_=0, to=500, textvariable=self.nudge_spacing_var, width=6)
+        self.nudge_spacing_spin.grid(row=3, column=3, sticky="w", padx=6)
+
+        self._update_nudge_controls_state()
+        return frame
+
+    def _update_nudge_controls_state(self):
+        on = self.nudge_enabled_var.get()
+        self.nudge_group_combo.configure(state="normal" if on else "disabled")
+        self.nudge_direction_combo.configure(state="readonly" if on else "disabled")
+        self.nudge_spacing_spin.configure(state="normal" if on else "disabled")
+        self._push_preview_if_active()
+
+    def _on_nudge_group_picked(self, event=None):
+        """Picking an *existing* group from the dropdown jumps this item's
+        position/direction/spacing to match it - no manual lining-up needed."""
+        name = self.nudge_group_combo.get().strip()
+        group = next((g for g in self.nudge_groups if g.name == name), None)
+        if not group:
+            return
+        self.nudge_enabled_var.set(True)
+        self._update_nudge_controls_state()
+        self.x_pct = group.x_pct
+        self.y_pct = group.y_pct
+        if group.direction in self.nudge_direction_keys:
+            self.nudge_direction_combo.current(self.nudge_direction_keys.index(group.direction))
+        self.nudge_spacing_var.set(group.spacing_px)
+        self._redraw_canvas()
+        self._push_preview_if_active()
 
     def _on_media_changed(self, kind):
         if kind == "low":
@@ -608,12 +800,16 @@ class ItemEditorDialog(DeviceSelectorMixin, MediaPickerMixin, AnimationPickerMix
     def _update_anim_frame_visibility(self):
         if self.mode_var.get() == "low_only":
             self.anim_frame.grid()
+            self.nudge_frame.grid()
         else:
             self.anim_frame.grid_remove()
+            self.nudge_frame.grid_remove()
             self._stop_preview()
 
     def _current_preview_payload(self):
         low_path = self._pending_media.get("low") or config_mod.resolve_media(self.item.low_image)
+        label_style = self._read_text_style(self.label_style)
+        percent_style = self._read_text_style(self.percent_style)
         return {
             "active": True,
             "mode": "device",
@@ -623,15 +819,47 @@ class ItemEditorDialog(DeviceSelectorMixin, MediaPickerMixin, AnimationPickerMix
             "enter": self.enter_keys[self.enter_combo.current()],
             "exit": self.exit_keys[self.exit_combo.current()],
             "label": self.label_entry.get().strip() or "Preview",
-            "show_label": self.show_label_var.get(),
-            "show_percent": self.show_percent_var.get(),
+            "show_label": self.label_style["show_var"].get(),
+            "show_percent": self.percent_style["show_var"].get(),
+            "label_style": label_style,
+            "percent_style": percent_style,
             "low_path": low_path,
             "device_class_hint": self.item.device_class_hint or "Other",
+            "normal_pic_animation": self.normal_anim_keys[self.normal_anim_combo.current()],
+            "low_pic_animation": self.low_anim_keys[self.low_anim_combo.current()],
         }
 
     def _on_cancel(self):
         self._stop_preview()
         self.destroy()
+
+    def _resolve_nudge_group(self):
+        """Type a new name -> creates a group (using this dialog's current
+        position/direction/spacing). Pick/type an existing name -> updates
+        that shared group's position/direction/spacing from this dialog,
+        moving every other device using it too. Checkbox unchecked -> no
+        group at all, regardless of what's typed in the field."""
+        if not self.nudge_enabled_var.get():
+            return None
+        name = self.nudge_group_combo.get().strip()
+        if not name:
+            return None
+        direction = self.nudge_direction_keys[self.nudge_direction_combo.current()]
+        spacing = self.nudge_spacing_var.get()
+        existing = next((g for g in self.nudge_groups if g.name == name), None)
+        if existing:
+            existing.x_pct = self.x_pct
+            existing.y_pct = self.y_pct
+            existing.direction = direction
+            existing.spacing_px = spacing
+            return existing.id
+        new_group = config_mod.NudgeGroup(
+            id=config_mod.new_group_id(), name=name,
+            x_pct=self.x_pct, y_pct=self.y_pct,
+            direction=direction, spacing_px=spacing,
+        )
+        self.nudge_groups.append(new_group)
+        return new_group.id
 
     def _on_save(self):
         resolved = self._resolve_device_selection(self.item.device_class_hint or "Other")
@@ -639,6 +867,7 @@ class ItemEditorDialog(DeviceSelectorMixin, MediaPickerMixin, AnimationPickerMix
             return
         serial, device_class_hint = resolved
         label = self.label_entry.get().strip() or serial
+        nudge_group_id = self._resolve_nudge_group()
 
         item = config_mod.OverlayItem(
             id=self.item.id,
@@ -652,12 +881,17 @@ class ItemEditorDialog(DeviceSelectorMixin, MediaPickerMixin, AnimationPickerMix
             low_threshold_pct=self.threshold_var.get(),
             normal_image=self.item.normal_image,
             low_image=self.item.low_image,
+            normal_pic_animation=self.normal_anim_keys[self.normal_anim_combo.current()],
+            low_pic_animation=self.low_anim_keys[self.low_anim_combo.current()],
             sound=self.item.sound,
             sound_cooldown_sec=self.item.sound_cooldown_sec,
-            show_label=self.show_label_var.get(),
-            show_percent=self.show_percent_var.get(),
+            show_label=self.label_style["show_var"].get(),
+            show_percent=self.percent_style["show_var"].get(),
             enter_animation=self.enter_keys[self.enter_combo.current()],
             exit_animation=self.exit_keys[self.exit_combo.current()],
+            nudge_group_id=nudge_group_id,
+            **{f"label_{k}": v for k, v in self._read_text_style(self.label_style).items()},
+            **{f"percent_{k}": v for k, v in self._read_text_style(self.percent_style).items()},
         )
 
         for kind, attr in (("normal", "normal_image"), ("low", "low_image"), ("sound", "sound")):
@@ -936,6 +1170,7 @@ class MainWindow(tk.Tk):
         i18n.set_language(self.cfg.language)
         apply_language_style()
         default_assets.ensure_defaults()
+        bundled_icons.ensure_device_icons()
         self.vr_monitor = VRMonitor(poll_interval_sec=self.cfg.poll_interval_sec)
         self.vr_monitor.start()
         self.server = ServerController(get_config=lambda: self.cfg, vr_monitor=self.vr_monitor)
@@ -952,14 +1187,47 @@ class MainWindow(tk.Tk):
 
         if not self.cfg.dismissed_battery_notice:
             self.after(200, self._show_battery_notice)
+        else:
+            self.after(200, self._maybe_check_for_updates)
 
     def _show_battery_notice(self):
         FirstRunNoticeDialog(self, self._on_battery_notice_dismissed)
 
-    def _on_battery_notice_dismissed(self, dont_show_again):
+    def _on_battery_notice_dismissed(self, dont_show_again, check_for_updates):
+        changed = False
         if dont_show_again:
             self.cfg.dismissed_battery_notice = True
+            changed = True
+        if check_for_updates != self.cfg.check_for_updates:
+            self.cfg.check_for_updates = check_for_updates
+            changed = True
+        if changed:
             config_mod.save(self.cfg)
+        self._maybe_check_for_updates()
+
+    def _maybe_check_for_updates(self):
+        if not self.cfg.check_for_updates:
+            return
+        threading.Thread(target=self._update_check_worker, daemon=True).start()
+
+    def _update_check_worker(self):
+        result = update_check.check_latest(APP_VERSION)
+        if result:
+            tag, url = result
+            self.after(0, lambda: self._show_update_notice(tag, url))
+
+    def _show_update_notice(self, tag, url):
+        dlg = tk.Toplevel(self)
+        dlg.title(i18n.t_piqad("update_notice_title"))
+        dlg.resizable(False, False)
+        frm = ttk.Frame(dlg)
+        frm.pack(padx=18, pady=16)
+        ttk.Label(frm, text=i18n.t("update_notice_body_fmt").format(version=tag), font=_default_font()).pack(anchor="w")
+        link = ttk.Label(frm, text=url, foreground="#3d8bff", cursor="hand2", font=_default_font())
+        link.pack(anchor="w", pady=(8, 0))
+        link.bind("<Button-1>", lambda e: webbrowser.open(url))
+        ttk.Button(frm, text=i18n.t_piqad("about_close"), command=dlg.destroy).pack(anchor="e", pady=(14, 0))
+        dlg.transient(self)
 
     # -- UI -----------------------------------------------------------
     def _build(self):
@@ -1081,8 +1349,19 @@ class MainWindow(tk.Tk):
             self.item_tree.insert("", "end", iid=f"fx:{ef.id}", values=(i18n.t("type_effect"), ef.label, device_display, trig, thresh))
 
     def _all_positionables(self):
-        """Every placed thing (devices + effects), for canvas snapping/display."""
-        return list(self.cfg.items) + list(self.cfg.effects)
+        """Every placed thing (devices + effects), for canvas snapping/display.
+        Devices in a Nudge group are resolved to the group's shared position,
+        so the preview/snapping reflects where they actually render."""
+        groups_by_id = {g.id: g for g in self.cfg.nudge_groups}
+        result = []
+        for it in self.cfg.items:
+            group = groups_by_id.get(it.nudge_group_id) if it.nudge_group_id else None
+            x_pct = group.x_pct if group else it.x_pct
+            y_pct = group.y_pct if group else it.y_pct
+            result.append(SimpleNamespace(id=it.id, label=it.label, x_pct=x_pct, y_pct=y_pct, width_px=it.width_px))
+        for ef in self.cfg.effects:
+            result.append(SimpleNamespace(id=ef.id, label=ef.label, x_pct=ef.x_pct, y_pct=ef.y_pct, width_px=ef.width_px))
+        return result
 
     def _selected_entry(self):
         sel = self.item_tree.selection()
@@ -1099,7 +1378,7 @@ class MainWindow(tk.Tk):
 
     def _add_item(self):
         new_item = config_mod.OverlayItem(id=config_mod.new_item_id(), label="", device_serial="")
-        dlg = ItemEditorDialog(self, self.vr_monitor, new_item, self._all_positionables(), preview_state=self.server.preview_state)
+        dlg = ItemEditorDialog(self, self.vr_monitor, new_item, self._all_positionables(), preview_state=self.server.preview_state, nudge_groups=self.cfg.nudge_groups)
         self.wait_window(dlg)
         if dlg.result:
             self.cfg.items.append(dlg.result)
@@ -1122,7 +1401,7 @@ class MainWindow(tk.Tk):
             return
         others = [p for p in self._all_positionables() if p.id != obj.id]
         if kind == "device":
-            dlg = ItemEditorDialog(self, self.vr_monitor, obj, others, preview_state=self.server.preview_state)
+            dlg = ItemEditorDialog(self, self.vr_monitor, obj, others, preview_state=self.server.preview_state, nudge_groups=self.cfg.nudge_groups)
             self.wait_window(dlg)
             if dlg.result:
                 idx = next(i for i, it in enumerate(self.cfg.items) if it.id == obj.id)
