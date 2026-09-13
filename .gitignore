@@ -1,0 +1,14 @@
+# Build artifacts
+build/
+dist/
+*.spec
+
+# Runtime data (created next to the exe, not part of source)
+Data/
+
+# Python
+__pycache__/
+*.pyc
+
+# Editors
+.vscode/
