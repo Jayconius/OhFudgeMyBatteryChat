@@ -17,10 +17,12 @@ just start both. Or run from source:
 If the real app's config already has Devices/Effects configured, this tool
 lists those exact devices so you're driving your real, already-styled
 overlay. Otherwise it falls back to a generic placeholder rig - a Headset,
-two Controllers, and five Trackers (hip, both feet, both knees - a typical
-5-point full body tracking setup) - add real Device items pointed at
-DEMO-HMD-01/DEMO-CTRL-L/DEMO-CTRL-R/DEMO-TRACKER-01..05 from the app's own
-Add Device screen if you want to drive those instead.
+two Controllers, five Trackers (hip, both feet, both knees - a typical
+5-point full body tracking setup), and three Lighthouses/base stations
+(connect/disconnect only, no battery - matching real hardware) - add real
+Device items pointed at DEMO-HMD-01/DEMO-CTRL-L/DEMO-CTRL-R/
+DEMO-TRACKER-01..05/DEMO-LIGHTHOUSE-01..03 from the app's own Add Device
+screen if you want to drive those instead.
 """
 import argparse
 import json
@@ -51,6 +53,11 @@ PLACEHOLDER_DEVICES = [
     ("DEMO-TRACKER-03", "GenericTracker", "Demo Tracker (Right Foot)", ""),
     ("DEMO-TRACKER-04", "GenericTracker", "Demo Tracker (Left Knee)", ""),
     ("DEMO-TRACKER-05", "GenericTracker", "Demo Tracker (Right Knee)", ""),
+    # Base stations/lighthouses are mains-powered - no battery to report,
+    # just connect/disconnect, matching real hardware.
+    ("DEMO-LIGHTHOUSE-01", "TrackingReference", "Demo Lighthouse 1", ""),
+    ("DEMO-LIGHTHOUSE-02", "TrackingReference", "Demo Lighthouse 2", ""),
+    ("DEMO-LIGHTHOUSE-03", "TrackingReference", "Demo Lighthouse 3", ""),
 ]
 
 
@@ -87,15 +94,23 @@ class SimulatorApp(tk.Tk):
             display = f"{label} ({device_class}{' ' + role if role else ''})"
             ttk.Label(self, text=display, width=32).grid(row=i, column=0, padx=(10, 4), pady=4, sticky="w")
 
-            var = tk.IntVar(value=80)
-            self.battery_vars[serial] = var
-            ttk.Scale(self, from_=0, to=100, orient="horizontal", length=180, variable=var).grid(
-                row=i, column=1, padx=4, pady=4
-            )
+            has_battery = device_class != "TrackingReference"
+            if has_battery:
+                var = tk.IntVar(value=80)
+                self.battery_vars[serial] = var
+                ttk.Scale(self, from_=0, to=100, orient="horizontal", length=180, variable=var).grid(
+                    row=i, column=1, padx=4, pady=4
+                )
 
-            pct_lbl = ttk.Label(self, text="80%", width=5)
-            pct_lbl.grid(row=i, column=2, padx=4, pady=4)
-            var.trace_add("write", lambda *a, var=var, lbl=pct_lbl: lbl.configure(text=f"{int(var.get())}%"))
+                pct_lbl = ttk.Label(self, text="80%", width=5)
+                pct_lbl.grid(row=i, column=2, padx=4, pady=4)
+                var.trace_add("write", lambda *a, var=var, lbl=pct_lbl: lbl.configure(text=f"{int(var.get())}%"))
+            else:
+                # Base stations/lighthouses are mains-powered in real life -
+                # no battery slider, just the Connected toggle.
+                ttk.Label(self, text="No battery", width=8, foreground="#888888").grid(
+                    row=i, column=1, columnspan=2, padx=4, pady=4, sticky="w"
+                )
 
             conn_var = tk.BooleanVar(value=True)
             self.connected_vars[serial] = conn_var
@@ -116,10 +131,11 @@ class SimulatorApp(tk.Tk):
         for serial, (device_class, model, role, manufacturer) in self.device_meta.items():
             if not self.connected_vars[serial].get():
                 continue
+            battery_var = self.battery_vars.get(serial)
             devices[serial] = {
                 "device_class": device_class,
                 "model": model,
-                "battery_pct": self.battery_vars[serial].get(),
+                "battery_pct": battery_var.get() if battery_var is not None else None,
                 "charging": False,
                 "role": role,
                 "manufacturer": manufacturer,

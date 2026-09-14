@@ -70,6 +70,10 @@ THEME_OPTIONS = {
     "light": "Light",
     "dark": "Dark",
 }
+DURATION_MODE_OPTIONS = {
+    "always": "Stay on screen while triggered",
+    "timed": "Show for a set time, then hide",
+}
 
 
 @dataclasses.dataclass
@@ -161,10 +165,13 @@ class EffectItem:
     trigger: str = "battery_low"        # see TRIGGER_OPTIONS
     low_threshold_pct: int = 20         # used by battery_low / battery_normal triggers
     picture: Optional[str] = None       # None -> default icon for device_class_hint
+    picture_animation: str = "none"     # see TEXT_ANIMATION_OPTIONS - idle animation on the picture
     sound: Optional[str] = None
     sound_cooldown_sec: int = 300
     enter_animation: str = "pop_bottom"
     exit_animation: str = "fade"
+    duration_mode: str = "always"        # see DURATION_MODE_OPTIONS
+    duration_sec: float = 5.0            # only used when duration_mode == "timed"
     text: str = ""
     text_position: str = "below"        # see TEXT_POSITION_OPTIONS
     font_family: str = "Segoe UI"

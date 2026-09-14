@@ -1081,13 +1081,37 @@ class EffectEditorDialog(DeviceSelectorMixin, MediaPickerMixin, AnimationPickerM
 
         self.label_entry.bind("<KeyRelease>", lambda e: self._push_preview_if_active())
 
+        duration_frame = ttk.LabelFrame(self, text=i18n.t_piqad("frame_duration"))
+        duration_frame.grid(row=3, column=0, columnspan=2, sticky="ew", **pad)
+        self.duration_mode_keys = list(config_mod.DURATION_MODE_OPTIONS.keys())
+        self.duration_mode_var = tk.StringVar(
+            value=self.effect.duration_mode if self.effect.duration_mode in self.duration_mode_keys else "always"
+        )
+        for i, key in enumerate(self.duration_mode_keys):
+            ttk.Radiobutton(
+                duration_frame, text=i18n.t_piqad(f"durationmode_{key}"), variable=self.duration_mode_var, value=key,
+                command=self._update_duration_visibility,
+            ).grid(row=i, column=0, columnspan=2, sticky="w", padx=6, pady=(3, 0))
+        self.duration_sec_row = ttk.Frame(duration_frame)
+        self.duration_sec_row.grid(row=len(self.duration_mode_keys), column=0, columnspan=2, sticky="w", padx=6, pady=(0, 4))
+        ttk.Label(self.duration_sec_row, text=i18n.t_piqad("lbl_duration_seconds")).pack(side="left")
+        self.duration_sec_var = tk.DoubleVar(value=self.effect.duration_sec)
+        ttk.Spinbox(
+            self.duration_sec_row, from_=0.5, to=300, increment=0.5, textvariable=self.duration_sec_var, width=6,
+            command=self._push_preview_if_active,
+        ).pack(side="left", padx=(6, 0))
+        self._update_duration_visibility()
+
         media = ttk.LabelFrame(self, text=i18n.t_piqad("frame_media"))
-        media.grid(row=3, column=0, columnspan=2, sticky="ew", **pad)
-        self._media_row(media, 0, i18n.t_piqad("lbl_picture"), "picture", self.effect.picture)
+        media.grid(row=4, column=0, columnspan=2, sticky="ew", **pad)
+        _, self.picture_anim_combo, self.picture_anim_keys = self._media_row(
+            media, 0, i18n.t_piqad("lbl_picture"), "picture", self.effect.picture,
+            anim_default=self.effect.picture_animation, anim_change_cb=self._push_preview_if_active,
+        )
         self._media_row(media, 1, i18n.t_piqad("lbl_warning_sound"), "sound", self.effect.sound, sound=True)
 
         text_frame = ttk.LabelFrame(self, text=i18n.t_piqad("frame_caption"))
-        text_frame.grid(row=4, column=0, columnspan=2, sticky="ew", **pad)
+        text_frame.grid(row=5, column=0, columnspan=2, sticky="ew", **pad)
 
         ttk.Label(text_frame, text=i18n.t_piqad("lbl_text")).grid(row=0, column=0, sticky="w", padx=6, pady=3)
         self.text_entry = ttk.Entry(text_frame, width=30)
@@ -1136,14 +1160,20 @@ class EffectEditorDialog(DeviceSelectorMixin, MediaPickerMixin, AnimationPickerM
         self.outline_color_btn.grid(row=4, column=3, sticky="w", padx=6)
 
         pos_frame = self._build_position_frame(self, self.effect.id, self.effect.x_pct, self.effect.y_pct, self.effect.width_px)
-        pos_frame.grid(row=5, column=0, columnspan=2, sticky="ew", **pad)
+        pos_frame.grid(row=6, column=0, columnspan=2, sticky="ew", **pad)
 
         btns = ttk.Frame(self)
-        btns.grid(row=6, column=0, columnspan=2, sticky="e", padx=8, pady=10)
+        btns.grid(row=7, column=0, columnspan=2, sticky="e", padx=8, pady=10)
         ttk.Button(btns, text=i18n.t_piqad("btn_cancel"), command=self._on_cancel).pack(side="right", padx=4)
         ttk.Button(btns, text=i18n.t_piqad("btn_save"), command=self._on_save).pack(side="right", padx=4)
 
         self._update_target_mode_visibility()
+
+    def _update_duration_visibility(self):
+        if self.duration_mode_var.get() == "timed":
+            self.duration_sec_row.grid()
+        else:
+            self.duration_sec_row.grid_remove()
 
     # -- device targeting: Specific / Any / All + Ignore Device -----------
     def _build_target_frame(self, parent):
@@ -1222,6 +1252,7 @@ class EffectEditorDialog(DeviceSelectorMixin, MediaPickerMixin, AnimationPickerM
             "enter": self.enter_keys[self.enter_combo.current()],
             "exit": self.exit_keys[self.exit_combo.current()],
             "low_path": picture_path,
+            "picture_animation": self.picture_anim_keys[self.picture_anim_combo.current()],
             "device_class_hint": self.effect.device_class_hint or "Other",
             "text": self.text_entry.get(),
             "text_position": self.text_pos_keys[self.text_pos_combo.current()],
@@ -1267,10 +1298,13 @@ class EffectEditorDialog(DeviceSelectorMixin, MediaPickerMixin, AnimationPickerM
             trigger=self.trigger_keys[self.trigger_combo.current()],
             low_threshold_pct=self.threshold_var.get(),
             picture=self.effect.picture,
+            picture_animation=self.picture_anim_keys[self.picture_anim_combo.current()],
             sound=self.effect.sound,
             sound_cooldown_sec=self.effect.sound_cooldown_sec,
             enter_animation=self.enter_keys[self.enter_combo.current()],
             exit_animation=self.exit_keys[self.exit_combo.current()],
+            duration_mode=self.duration_mode_var.get(),
+            duration_sec=self.duration_sec_var.get(),
             text=self.text_entry.get(),
             text_position=self.text_pos_keys[self.text_pos_combo.current()],
             font_family=self.font_combo.get() or "Segoe UI",

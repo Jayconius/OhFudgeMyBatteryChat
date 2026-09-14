@@ -129,6 +129,7 @@ def _preview_payload(preview_state: PreviewState):
         "label_style": {**_DEFAULT_LABEL_STYLE, **p.get("label_style", {})},
         "percent_style": {**_DEFAULT_PERCENT_STYLE, **p.get("percent_style", {})},
         "low_pic_animation": p.get("low_pic_animation", "none"),
+        "picture_animation": p.get("picture_animation", "none"),
         "low_src": pic_src,
         "text": p.get("text", ""),
         "text_position": p.get("text_position", "below"),
@@ -208,8 +209,11 @@ def _effect_payload(effect, defaults_by_class: dict):
         "trigger": effect.trigger,
         "low_threshold_pct": effect.low_threshold_pct,
         "sound_cooldown_sec": effect.sound_cooldown_sec,
+        "picture_animation": effect.picture_animation,
         "enter_animation": effect.enter_animation,
         "exit_animation": effect.exit_animation,
+        "duration_mode": effect.duration_mode,
+        "duration_sec": effect.duration_sec,
         "text": effect.text,
         "text_position": effect.text_position,
         "font_family": effect.font_family,
@@ -317,8 +321,10 @@ function hideAllStale() {
   for (const effect of EFFECTS) {
     const s = effectState[effect.id];
     if (!s) continue;
+    if (s.timedHideJob) { clearTimeout(s.timedHideJob); s.timedHideJob = null; }
     s.el.style.display = 'none';
     s.shown = false;
+    s.suppressed = false;
   }
 }
 
@@ -389,6 +395,7 @@ function buildEffectElement(cfg) {
   pic.className = 'pic';
   pic.src = cfg.pic_src;
   if (video) { pic.autoplay = true; pic.loop = true; pic.muted = true; pic.playsInline = true; }
+  applyPicAnimation(pic, cfg.picture_animation);
   picWrap.appendChild(pic);
 
   let textEl = null;
@@ -472,7 +479,7 @@ for (const effect of EFFECTS) {
   root.appendChild(el);
 
   const audio = effect.sound_src ? new Audio(effect.sound_src) : null;
-  effectState[effect.id] = { lastShown: false, shown: false, lastSoundTs: 0, el, audio };
+  effectState[effect.id] = { lastShown: false, shown: false, lastSoundTs: 0, el, audio, suppressed: false, timedHideJob: null };
 }
 
 // Evaluates the trigger against a single device's live state ('dev' is
@@ -516,7 +523,7 @@ function ensurePreviewEl(p) {
   if (previewEl) previewEl.remove();
   if (p.mode === 'effect') {
     const built = buildEffectElement({
-      pic_src: p.low_src, text: p.text, text_position: p.text_position,
+      pic_src: p.low_src, picture_animation: p.picture_animation, text: p.text, text_position: p.text_position,
       font_family: p.font_family, font_size_px: p.font_size_px, font_color: p.font_color,
       text_animation: p.text_animation, outline_enabled: p.outline_enabled,
       outline_thickness_px: p.outline_thickness_px, outline_color: p.outline_color,
@@ -676,14 +683,37 @@ async function poll() {
     for (const effect of EFFECTS) {
       const s = effectState[effect.id];
       const shouldShow = effectShouldShow(effect, data);
+      const timed = effect.duration_mode === 'timed';
 
-      if (shouldShow && !s.shown) {
+      if (timed && !shouldShow) {
+        // Trigger cleared - re-arm so the next rising edge can show again.
+        s.suppressed = false;
+      }
+
+      if (shouldShow && !s.shown && !(timed && s.suppressed)) {
         s.el.style.display = 'flex';
         void s.el.offsetWidth;
         const enterKey = ENTER_KEYFRAMES[effect.enter_animation] || ENTER_KEYFRAMES.pop_bottom;
         s.el.style.animation = `${enterKey} ${ENTER_DUR_MS}ms cubic-bezier(0.34,1.56,0.64,1) forwards`;
         s.shown = true;
-      } else if (!shouldShow && s.shown) {
+
+        if (timed) {
+          // Auto-hide after the configured duration regardless of whether
+          // the trigger is still true - it won't show again until the
+          // trigger clears and re-fires (handled by the suppressed reset
+          // above), so it can't immediately pop right back in.
+          const elRef = s.el;
+          const sRef = s;
+          sRef.timedHideJob = setTimeout(() => {
+            const exitKey = EXIT_KEYFRAMES[effect.exit_animation] || EXIT_KEYFRAMES.fade;
+            elRef.style.animation = `${exitKey} ${EXIT_DUR_MS}ms ease forwards`;
+            sRef.shown = false;
+            sRef.suppressed = true;
+            sRef.timedHideJob = null;
+            setTimeout(() => { if (!sRef.shown) elRef.style.display = 'none'; }, EXIT_DUR_MS + 20);
+          }, Math.max(0.5, effect.duration_sec || 5) * 1000);
+        }
+      } else if (!timed && !shouldShow && s.shown) {
         const exitKey = EXIT_KEYFRAMES[effect.exit_animation] || EXIT_KEYFRAMES.fade;
         s.el.style.animation = `${exitKey} ${EXIT_DUR_MS}ms ease forwards`;
         s.shown = false;
