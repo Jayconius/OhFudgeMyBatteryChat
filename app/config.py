@@ -200,6 +200,7 @@ class AppConfig:
     dismissed_battery_notice: bool = False
     check_for_updates: bool = False
     theme: str = "system"  # "system" | "light" | "dark" - see THEME_OPTIONS
+    icon_check_version: str = ""  # last APP_VERSION the new-icons prompt ran for
     items: list = dataclasses.field(default_factory=list)         # list[OverlayItem]
     effects: list = dataclasses.field(default_factory=list)       # list[EffectItem]
     nudge_groups: list = dataclasses.field(default_factory=list)  # list[NudgeGroup]
@@ -213,6 +214,7 @@ class AppConfig:
             "dismissed_battery_notice": self.dismissed_battery_notice,
             "check_for_updates": self.check_for_updates,
             "theme": self.theme,
+            "icon_check_version": self.icon_check_version,
             "items": [it.to_dict() for it in self.items],
             "effects": [ef.to_dict() for ef in self.effects],
             "nudge_groups": [g.to_dict() for g in self.nudge_groups],
@@ -228,6 +230,7 @@ class AppConfig:
             dismissed_battery_notice=d.get("dismissed_battery_notice", False),
             check_for_updates=d.get("check_for_updates", False),
             theme=d.get("theme", "system"),
+            icon_check_version=d.get("icon_check_version", ""),
         )
         cfg.items = [OverlayItem.from_dict(it) for it in d.get("items", [])]
         cfg.effects = [EffectItem.from_dict(ef) for ef in d.get("effects", [])]

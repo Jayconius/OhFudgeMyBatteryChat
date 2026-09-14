@@ -218,6 +218,8 @@ class AboutDialog(tk.Toplevel):
         self.theme_combo.pack(side="left")
         self.theme_combo.bind("<<ComboboxSelected>>", self._on_theme_change)
 
+        ttk.Button(frm, text=i18n.t_piqad("btn_restore_icons"), command=self._on_restore_icons).pack(anchor="w", pady=(12, 0))
+
         ttk.Button(frm, text=i18n.t_piqad("about_close"), command=self.destroy).pack(anchor="e", pady=(14, 0))
 
         self.grab_set()
@@ -239,6 +241,22 @@ class AboutDialog(tk.Toplevel):
         self.main_window.cfg.theme = new_theme
         config_mod.save(self.main_window.cfg)
         messagebox.showinfo(i18n.t("about_theme_label"), i18n.t("msg_theme_restart"), parent=self)
+
+    def _on_restore_icons(self):
+        confirmed = messagebox.askyesno(
+            i18n.t("restore_icons_confirm_title"),
+            i18n.t("restore_icons_confirm_body"),
+            icon="warning",
+            parent=self,
+        )
+        if not confirmed:
+            return
+        count = bundled_icons.restore_all_icons()
+        messagebox.showinfo(
+            i18n.t("restore_icons_confirm_title"),
+            i18n.t("restore_icons_done_fmt").format(n=count),
+            parent=self,
+        )
 
 
 class FirstRunNoticeDialog(tk.Toplevel):
@@ -625,7 +643,72 @@ class PreviewMixin:
             self.preview_state.clear()
 
 
-class ItemEditorDialog(DeviceSelectorMixin, MediaPickerMixin, AnimationPickerMixin, PositionCanvasMixin, PreviewMixin, tk.Toplevel):
+class ScrollableDialogMixin:
+    """A dialog body that scrolls internally and caps its own height to the
+    screen, so Save/Cancel stay reachable no matter how many customization
+    sections are visible or how small the screen is. Shared by ItemEditorDialog
+    and EffectEditorDialog since both can grow taller than a small screen once
+    every optional section (Nudge/Duration/Pop Animation/Caption/Media/Position)
+    is showing at once."""
+
+    def _build_scroll_container(self):
+        container = ttk.Frame(self)
+        container.pack(side="top", fill="both", expand=True)
+        canvas = tk.Canvas(container, highlightthickness=0, bg=self.cget("bg"))
+        vsb = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=vsb.set)
+        vsb.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+        inner = ttk.Frame(canvas)
+        inner_window = canvas.create_window((0, 0), window=inner, anchor="nw")
+        self._body_canvas, self._body_inner, self._body_vsb = canvas, inner, vsb
+
+        def _sync_scrollregion(event=None):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+        inner.bind("<Configure>", _sync_scrollregion)
+        canvas.bind("<Configure>", lambda e: canvas.itemconfig(inner_window, width=e.width))
+
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        canvas.bind("<Enter>", lambda e: canvas.bind_all("<MouseWheel>", _on_mousewheel))
+        canvas.bind("<Leave>", lambda e: canvas.unbind_all("<MouseWheel>"))
+        return inner, vsb
+
+    def _cap_dialog_height(self, inner, vsb):
+        """Caps the dialog's total height to fit the screen (leaving room
+        for the taskbar/title bar) - the canvas scrolls internally for
+        whatever doesn't fit, so Save/Cancel stay reachable regardless of
+        how many customization sections are visible or how small the
+        screen is.
+
+        Measures the button bar directly rather than deriving it from
+        self.winfo_reqheight() - a Canvas's own requested size defaults to a
+        small fixed value regardless of what's embedded in it via
+        create_window(), so it doesn't propagate inner's real height
+        upward; subtracting from the Toplevel's total would badly
+        underestimate the button bar's share."""
+        self.update_idletasks()
+        content_w = inner.winfo_reqwidth()
+        scrollbar_w = vsb.winfo_reqwidth()
+        width = content_w + scrollbar_w + 20
+        content_h = inner.winfo_reqheight()
+        chrome_h = self._body_btns.winfo_reqheight() + 20  # pady top+bottom on the button bar
+        screen_h = self.winfo_screenheight()
+        max_total_h = max(300, screen_h - 100)
+        total_h = min(content_h + chrome_h, max_total_h)
+        # A plain geometry() call isn't enough here: since the dialog is
+        # resizable(False, False), Tk keeps re-snapping it back to its
+        # natural pack-computed request size (dominated by the Canvas's tiny
+        # built-in default, since a Canvas never propagates the size of
+        # whatever's embedded in it via create_window()) on the next layout
+        # pass, silently discarding the explicit size below. Pinning
+        # min/maxsize to the same value locks it for real.
+        self.minsize(width, total_h)
+        self.maxsize(width, total_h)
+        self.geometry(f"{width}x{total_h}")
+
+
+class ItemEditorDialog(ScrollableDialogMixin, DeviceSelectorMixin, MediaPickerMixin, AnimationPickerMixin, PositionCanvasMixin, PreviewMixin, tk.Toplevel):
     def __init__(self, parent, vr_monitor: VRMonitor, item: config_mod.OverlayItem, other_items, preview_state=None, nudge_groups=None, exclude_serials=None):
         super().__init__(parent)
         self.withdraw()
@@ -665,26 +748,7 @@ class ItemEditorDialog(DeviceSelectorMixin, MediaPickerMixin, AnimationPickerMix
         ttk.Button(btns, text=i18n.t_piqad("btn_save"), command=self._on_save).pack(side="right", padx=4)
         self._body_btns = btns
 
-        container = ttk.Frame(self)
-        container.pack(side="top", fill="both", expand=True)
-        canvas = tk.Canvas(container, highlightthickness=0, bg=self.cget("bg"))
-        vsb = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
-        canvas.configure(yscrollcommand=vsb.set)
-        vsb.pack(side="right", fill="y")
-        canvas.pack(side="left", fill="both", expand=True)
-        inner = ttk.Frame(canvas)
-        inner_window = canvas.create_window((0, 0), window=inner, anchor="nw")
-        self._body_canvas, self._body_inner, self._body_vsb = canvas, inner, vsb
-
-        def _sync_scrollregion(event=None):
-            canvas.configure(scrollregion=canvas.bbox("all"))
-        inner.bind("<Configure>", _sync_scrollregion)
-        canvas.bind("<Configure>", lambda e: canvas.itemconfig(inner_window, width=e.width))
-
-        def _on_mousewheel(event):
-            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-        canvas.bind("<Enter>", lambda e: canvas.bind_all("<MouseWheel>", _on_mousewheel))
-        canvas.bind("<Leave>", lambda e: canvas.unbind_all("<MouseWheel>"))
+        inner, vsb = self._build_scroll_container()
 
         device_frame = self._build_device_selector(inner, self.item.device_serial, exclude_serials=self.exclude_serials)
         device_frame.grid(row=0, column=0, columnspan=2, sticky="ew", **pad)
@@ -754,39 +818,6 @@ class ItemEditorDialog(DeviceSelectorMixin, MediaPickerMixin, AnimationPickerMix
 
         self._update_anim_frame_visibility()
         self._cap_dialog_height(inner, vsb)
-
-    def _cap_dialog_height(self, inner, vsb):
-        """Caps the dialog's total height to fit the screen (leaving room
-        for the taskbar/title bar) - the canvas scrolls internally for
-        whatever doesn't fit, so Save/Cancel stay reachable regardless of
-        how many customization sections are visible or how small the
-        screen is.
-
-        Measures the button bar directly rather than deriving it from
-        self.winfo_reqheight() - a Canvas's own requested size defaults to a
-        small fixed value regardless of what's embedded in it via
-        create_window(), so it doesn't propagate inner's real height
-        upward; subtracting from the Toplevel's total would badly
-        underestimate the button bar's share."""
-        self.update_idletasks()
-        content_w = inner.winfo_reqwidth()
-        scrollbar_w = vsb.winfo_reqwidth()
-        width = content_w + scrollbar_w + 20
-        content_h = inner.winfo_reqheight()
-        chrome_h = self._body_btns.winfo_reqheight() + 20  # pady top+bottom on the button bar
-        screen_h = self.winfo_screenheight()
-        max_total_h = max(300, screen_h - 100)
-        total_h = min(content_h + chrome_h, max_total_h)
-        # A plain geometry() call isn't enough here: since the dialog is
-        # resizable(False, False), Tk keeps re-snapping it back to its
-        # natural pack-computed request size (dominated by the Canvas's tiny
-        # built-in default, since a Canvas never propagates the size of
-        # whatever's embedded in it via create_window()) on the next layout
-        # pass, silently discarding the explicit size below. Pinning
-        # min/maxsize to the same value locks it for real.
-        self.minsize(width, total_h)
-        self.maxsize(width, total_h)
-        self.geometry(f"{width}x{total_h}")
 
     def _build_text_style_block(self, parent, row, title_key, show_key, show_default, prefix_defaults):
         """One customizable text element (Label or Battery %): show toggle,
@@ -1028,7 +1059,7 @@ class ItemEditorDialog(DeviceSelectorMixin, MediaPickerMixin, AnimationPickerMix
         self.destroy()
 
 
-class EffectEditorDialog(DeviceSelectorMixin, MediaPickerMixin, AnimationPickerMixin, PositionCanvasMixin, PreviewMixin, tk.Toplevel):
+class EffectEditorDialog(ScrollableDialogMixin, DeviceSelectorMixin, MediaPickerMixin, AnimationPickerMixin, PositionCanvasMixin, PreviewMixin, tk.Toplevel):
     def __init__(self, parent, vr_monitor: VRMonitor, effect: config_mod.EffectItem, other_items, preview_state=None, exclude_serials=None):
         super().__init__(parent)
         self.withdraw()
@@ -1055,10 +1086,25 @@ class EffectEditorDialog(DeviceSelectorMixin, MediaPickerMixin, AnimationPickerM
     def _build(self):
         pad = {"padx": 8, "pady": 4}
 
-        target_frame = self._build_target_frame(self)
+        # Save/Cancel are pinned outside the scroll area (packed first, so
+        # they claim their space at the bottom before the scrollable body
+        # below expands to fill the rest) - this dialog can grow tall enough
+        # (Target + Pop Animation + Duration + Media + Caption Text +
+        # Position all visible at once) to outgrow a smaller screen, and
+        # with resizable(False, False) there'd otherwise be no way to reach
+        # Save.
+        btns = ttk.Frame(self)
+        btns.pack(side="bottom", fill="x", padx=8, pady=10)
+        ttk.Button(btns, text=i18n.t_piqad("btn_cancel"), command=self._on_cancel).pack(side="right", padx=4)
+        ttk.Button(btns, text=i18n.t_piqad("btn_save"), command=self._on_save).pack(side="right", padx=4)
+        self._body_btns = btns
+
+        inner, vsb = self._build_scroll_container()
+
+        target_frame = self._build_target_frame(inner)
         target_frame.grid(row=0, column=0, columnspan=2, sticky="ew", **pad)
 
-        basics = ttk.LabelFrame(self, text=i18n.t_piqad("frame_basics"))
+        basics = ttk.LabelFrame(inner, text=i18n.t_piqad("frame_basics"))
         basics.grid(row=1, column=0, columnspan=2, sticky="ew", **pad)
         ttk.Label(basics, text=i18n.t_piqad("lbl_label")).grid(row=0, column=0, sticky="w", padx=6)
         self.label_entry = ttk.Entry(basics, width=30)
@@ -1076,12 +1122,12 @@ class EffectEditorDialog(DeviceSelectorMixin, MediaPickerMixin, AnimationPickerM
         ttk.Spinbox(basics, from_=1, to=99, textvariable=self.threshold_var, width=6).grid(row=2, column=1, sticky="w", padx=6)
         ttk.Label(basics, text=i18n.t_piqad("hint_threshold_effect"), foreground="#666").grid(row=2, column=2, sticky="w")
 
-        self.anim_frame = self._build_animation_frame(self, i18n.t_piqad("frame_pop_animation_effect"), self.effect.enter_animation, self.effect.exit_animation)
+        self.anim_frame = self._build_animation_frame(inner, i18n.t_piqad("frame_pop_animation_effect"), self.effect.enter_animation, self.effect.exit_animation)
         self.anim_frame.grid(row=2, column=0, columnspan=2, sticky="ew", **pad)
 
         self.label_entry.bind("<KeyRelease>", lambda e: self._push_preview_if_active())
 
-        duration_frame = ttk.LabelFrame(self, text=i18n.t_piqad("frame_duration"))
+        duration_frame = ttk.LabelFrame(inner, text=i18n.t_piqad("frame_duration"))
         duration_frame.grid(row=3, column=0, columnspan=2, sticky="ew", **pad)
         self.duration_mode_keys = list(config_mod.DURATION_MODE_OPTIONS.keys())
         self.duration_mode_var = tk.StringVar(
@@ -1102,7 +1148,7 @@ class EffectEditorDialog(DeviceSelectorMixin, MediaPickerMixin, AnimationPickerM
         ).pack(side="left", padx=(6, 0))
         self._update_duration_visibility()
 
-        media = ttk.LabelFrame(self, text=i18n.t_piqad("frame_media"))
+        media = ttk.LabelFrame(inner, text=i18n.t_piqad("frame_media"))
         media.grid(row=4, column=0, columnspan=2, sticky="ew", **pad)
         _, self.picture_anim_combo, self.picture_anim_keys = self._media_row(
             media, 0, i18n.t_piqad("lbl_picture"), "picture", self.effect.picture,
@@ -1110,7 +1156,7 @@ class EffectEditorDialog(DeviceSelectorMixin, MediaPickerMixin, AnimationPickerM
         )
         self._media_row(media, 1, i18n.t_piqad("lbl_warning_sound"), "sound", self.effect.sound, sound=True)
 
-        text_frame = ttk.LabelFrame(self, text=i18n.t_piqad("frame_caption"))
+        text_frame = ttk.LabelFrame(inner, text=i18n.t_piqad("frame_caption"))
         text_frame.grid(row=5, column=0, columnspan=2, sticky="ew", **pad)
 
         ttk.Label(text_frame, text=i18n.t_piqad("lbl_text")).grid(row=0, column=0, sticky="w", padx=6, pady=3)
@@ -1159,15 +1205,11 @@ class EffectEditorDialog(DeviceSelectorMixin, MediaPickerMixin, AnimationPickerM
         self.outline_color_btn, self.outline_color_var = _make_color_button(text_frame, self.effect.outline_color, self._push_preview_if_active)
         self.outline_color_btn.grid(row=4, column=3, sticky="w", padx=6)
 
-        pos_frame = self._build_position_frame(self, self.effect.id, self.effect.x_pct, self.effect.y_pct, self.effect.width_px)
+        pos_frame = self._build_position_frame(inner, self.effect.id, self.effect.x_pct, self.effect.y_pct, self.effect.width_px)
         pos_frame.grid(row=6, column=0, columnspan=2, sticky="ew", **pad)
 
-        btns = ttk.Frame(self)
-        btns.grid(row=7, column=0, columnspan=2, sticky="e", padx=8, pady=10)
-        ttk.Button(btns, text=i18n.t_piqad("btn_cancel"), command=self._on_cancel).pack(side="right", padx=4)
-        ttk.Button(btns, text=i18n.t_piqad("btn_save"), command=self._on_save).pack(side="right", padx=4)
-
         self._update_target_mode_visibility()
+        self._cap_dialog_height(inner, vsb)
 
     def _update_duration_visibility(self):
         if self.duration_mode_var.get() == "timed":
@@ -1364,7 +1406,7 @@ class MainWindow(tk.Tk):
         if not self.cfg.dismissed_battery_notice:
             self.after(200, self._show_battery_notice)
         else:
-            self.after(200, self._maybe_check_for_updates)
+            self.after(200, self._maybe_check_new_icons)
 
     def _show_battery_notice(self):
         FirstRunNoticeDialog(self, self._on_battery_notice_dismissed)
@@ -1379,6 +1421,34 @@ class MainWindow(tk.Tk):
             changed = True
         if changed:
             config_mod.save(self.cfg)
+        self._maybe_check_new_icons()
+
+    def _maybe_check_new_icons(self):
+        # Only re-scans once per APP_VERSION (persisted in cfg) so this never
+        # nags again on every launch of the same build - but an update that
+        # bundles further new icons always gets a fresh chance to ask, even
+        # if the user said no (or yes) to a previous version's prompt.
+        if self.cfg.icon_check_version == APP_VERSION:
+            self._maybe_check_for_updates()
+            return
+        missing = bundled_icons.missing_icons()
+        if missing:
+            self._show_new_icons_prompt(missing)
+        else:
+            self.cfg.icon_check_version = APP_VERSION
+            config_mod.save(self.cfg)
+            self._maybe_check_for_updates()
+
+    def _show_new_icons_prompt(self, missing):
+        add_now = messagebox.askyesno(
+            i18n.t("new_icons_prompt_title"),
+            i18n.t("new_icons_prompt_body_fmt").format(n=len(missing)),
+            parent=self,
+        )
+        if add_now:
+            bundled_icons.copy_icons(missing)
+        self.cfg.icon_check_version = APP_VERSION
+        config_mod.save(self.cfg)
         self._maybe_check_for_updates()
 
     def _maybe_check_for_updates(self):
