@@ -126,6 +126,7 @@ def _preview_payload(preview_state: PreviewState):
         "label": p.get("label", "Preview"),
         "show_label": p.get("show_label", True),
         "show_percent": p.get("show_percent", True),
+        "text_gap_px": p.get("text_gap_px", 4),
         "label_style": {**_DEFAULT_LABEL_STYLE, **p.get("label_style", {})},
         "percent_style": {**_DEFAULT_PERCENT_STYLE, **p.get("percent_style", {})},
         "low_pic_animation": p.get("low_pic_animation", "none"),
@@ -162,6 +163,7 @@ def _item_payload(item, defaults_by_class: dict, nudge_groups_by_id: dict):
         "sound_cooldown_sec": item.sound_cooldown_sec,
         "show_label": item.show_label,
         "show_percent": item.show_percent,
+        "text_gap_px": item.text_gap_px,
         "label_style": {
             "font_family": item.label_font_family,
             "font_size_px": item.label_font_size_px,
@@ -216,6 +218,7 @@ def _effect_payload(effect, defaults_by_class: dict):
         "duration_sec": effect.duration_sec,
         "text": effect.text,
         "text_position": effect.text_position,
+        "text_gap_px": effect.text_gap_px,
         "font_family": effect.font_family,
         "font_size_px": effect.font_size_px,
         "font_color": effect.font_color,
@@ -306,6 +309,16 @@ const effectState = {}; // effects:  id -> { lastShown, shown, lastSoundTs, el, 
 
 let missedPolls = 0;
 const STALE_AFTER_MISSES = 3; // ~3 poll intervals of silence -> assume the app/Simulator closed
+
+// A rejected play() (autoplay policy in whatever browser/CEF build is
+// hosting this page, or the audio's metadata not finished loading yet) used
+// to be swallowed silently forever via .catch(() => {}) - one retry shortly
+// after covers a transient failure without spamming the audio element.
+function playAlertSound(audio) {
+  audio.play().catch(() => {
+    setTimeout(() => { audio.play().catch(() => {}); }, 250);
+  });
+}
 
 // Called once the server's gone quiet for a while, so a closed app (or a
 // crash) doesn't leave stale content stuck on screen forever - hides
@@ -401,7 +414,11 @@ function buildEffectElement(cfg) {
   let textEl = null;
   if (cfg.text) {
     textEl = document.createElement('div');
-    textEl.className = 'effect-text pos-' + (cfg.text_position || 'below');
+    const position = cfg.text_position || 'below';
+    textEl.className = 'effect-text pos-' + position;
+    const gap = cfg.text_gap_px ?? 4;
+    if (position === 'above') textEl.style.marginBottom = gap + 'px';
+    else if (position !== 'middle') textEl.style.marginTop = gap + 'px';
     const span = document.createElement('span');
     span.textContent = cfg.text;
     applyTextStyle(span, {
@@ -449,6 +466,7 @@ for (const item of ITEMS) {
   if (item.show_percent) {
     const pctDiv = document.createElement('div');
     pctDiv.className = 'pct';
+    pctDiv.style.marginTop = (item.text_gap_px ?? 4) + 'px';
     pctSpan = document.createElement('span');
     pctSpan.textContent = '--%';
     applyTextStyle(pctSpan, item.percent_style);
@@ -458,6 +476,7 @@ for (const item of ITEMS) {
   if (item.show_label) {
     const labelDiv = document.createElement('div');
     labelDiv.className = 'label';
+    labelDiv.style.marginTop = (item.text_gap_px ?? 4) + 'px';
     const labelSpan = document.createElement('span');
     labelSpan.textContent = item.label;
     applyTextStyle(labelSpan, item.label_style);
@@ -524,6 +543,7 @@ function ensurePreviewEl(p) {
   if (p.mode === 'effect') {
     const built = buildEffectElement({
       pic_src: p.low_src, picture_animation: p.picture_animation, text: p.text, text_position: p.text_position,
+      text_gap_px: p.text_gap_px,
       font_family: p.font_family, font_size_px: p.font_size_px, font_color: p.font_color,
       text_animation: p.text_animation, outline_enabled: p.outline_enabled,
       outline_thickness_px: p.outline_thickness_px, outline_color: p.outline_color,
@@ -542,6 +562,7 @@ function ensurePreviewEl(p) {
     if (p.show_percent) {
       const pctDiv = document.createElement('div');
       pctDiv.className = 'pct';
+      pctDiv.style.marginTop = (p.text_gap_px ?? 4) + 'px';
       const pctSpan = document.createElement('span');
       pctSpan.textContent = 'low%';
       applyTextStyle(pctSpan, p.percent_style);
@@ -551,6 +572,7 @@ function ensurePreviewEl(p) {
     if (p.show_label) {
       const labelDiv = document.createElement('div');
       labelDiv.className = 'label';
+      labelDiv.style.marginTop = (p.text_gap_px ?? 4) + 'px';
       const labelSpan = document.createElement('span');
       labelSpan.textContent = p.label;
       applyTextStyle(labelSpan, p.label_style);
@@ -672,7 +694,7 @@ async function poll() {
       const now = Date.now();
       if (isLow && s.audio && (!s.lastLow || now - s.lastSoundTs > item.sound_cooldown_sec * 1000)) {
         s.audio.currentTime = 0;
-        s.audio.play().catch(() => {});
+        playAlertSound(s.audio);
         s.lastSoundTs = now;
       }
       s.lastLow = isLow;
@@ -724,7 +746,7 @@ async function poll() {
       const now = Date.now();
       if (shouldShow && s.audio && (!s.lastShown || now - s.lastSoundTs > effect.sound_cooldown_sec * 1000)) {
         s.audio.currentTime = 0;
-        s.audio.play().catch(() => {});
+        playAlertSound(s.audio);
         s.lastSoundTs = now;
       }
       s.lastShown = shouldShow;
@@ -769,6 +791,16 @@ INDEX_PAGE = """<!doctype html>
 class _Handler(BaseHTTPRequestHandler):
     server_version = "OhFudgeMyBatteryChat/1.0"
 
+    def send_response(self, code, message=None):
+        # Every response must go uncached, send_error()'s 404s included -
+        # OBS's embedded Chromium (CEF) caches aggressively and won't
+        # refetch a URL that once 404'd (e.g. a sound file requested a
+        # moment before ensure_defaults()/config save finished writing it)
+        # without the user manually clearing the Browser Source's cache,
+        # even long after the real file exists.
+        super().send_response(code, message)
+        self.send_header("Cache-Control", "no-store")
+
     def log_message(self, fmt, *args):
         pass  # keep the console quiet; the GUI shows its own status
 
@@ -777,7 +809,6 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(body)
 
@@ -786,7 +817,6 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(body)
 
@@ -800,7 +830,6 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", ctype or "application/octet-stream")
         self.send_header("Content-Length", str(len(data)))
-        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(data)
 

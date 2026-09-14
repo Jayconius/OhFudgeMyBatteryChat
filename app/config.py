@@ -98,6 +98,7 @@ class OverlayItem:
     enter_animation: str = "pop_bottom"  # only used when show_mode == "low_only"
     exit_animation: str = "fade"         # only used when show_mode == "low_only"
     nudge_group_id: Optional[str] = None  # if set, position/direction/spacing come from that NudgeGroup
+    text_gap_px: int = 4  # vertical gap between the picture and Label/Battery % text
 
     # Label text styling (only rendered when show_label is True)
     label_font_family: str = "Segoe UI"
@@ -174,6 +175,7 @@ class EffectItem:
     duration_sec: float = 5.0            # only used when duration_mode == "timed"
     text: str = ""
     text_position: str = "below"        # see TEXT_POSITION_OPTIONS
+    text_gap_px: int = 4                # gap between the picture and the caption text (unused for "middle")
     font_family: str = "Segoe UI"
     font_size_px: int = 22
     font_color: str = "#ffffff"

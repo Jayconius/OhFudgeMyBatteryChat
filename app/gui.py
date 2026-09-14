@@ -779,8 +779,19 @@ class ItemEditorDialog(ScrollableDialogMixin, DeviceSelectorMixin, MediaPickerMi
 
         caption_frame = ttk.LabelFrame(inner, text=i18n.t_piqad("frame_caption"))
         caption_frame.grid(row=4, column=0, columnspan=2, sticky="ew", **pad)
+
+        gap_row = ttk.Frame(caption_frame)
+        gap_row.grid(row=0, column=0, columnspan=6, sticky="w", padx=6, pady=(6, 0))
+        ttk.Label(gap_row, text=i18n.t_piqad("lbl_text_distance")).pack(side="left")
+        self.text_gap_var = tk.IntVar(value=self.item.text_gap_px)
+        ttk.Spinbox(
+            gap_row, from_=0, to=200, textvariable=self.text_gap_var, width=6,
+            command=self._push_preview_if_active,
+        ).pack(side="left", padx=(6, 6))
+        ttk.Label(gap_row, text=i18n.t_piqad("hint_text_distance"), foreground="#666").pack(side="left")
+
         self.label_style = self._build_text_style_block(
-            caption_frame, row=0, title_key="frame_label_style", show_key="chk_show_label",
+            caption_frame, row=1, title_key="frame_label_style", show_key="chk_show_label",
             show_default=self.item.show_label, prefix_defaults=dict(
                 font_family=self.item.label_font_family, font_size_px=self.item.label_font_size_px,
                 font_color=self.item.label_font_color, text_animation=self.item.label_text_animation,
@@ -789,7 +800,7 @@ class ItemEditorDialog(ScrollableDialogMixin, DeviceSelectorMixin, MediaPickerMi
             ),
         )
         self.percent_style = self._build_text_style_block(
-            caption_frame, row=5, title_key="frame_percent_style", show_key="chk_show_percent",
+            caption_frame, row=6, title_key="frame_percent_style", show_key="chk_show_percent",
             show_default=self.item.show_percent, prefix_defaults=dict(
                 font_family=self.item.percent_font_family, font_size_px=self.item.percent_font_size_px,
                 font_color=self.item.percent_font_color, text_animation=self.item.percent_text_animation,
@@ -975,6 +986,7 @@ class ItemEditorDialog(ScrollableDialogMixin, DeviceSelectorMixin, MediaPickerMi
             "label": self.label_entry.get().strip() or "Preview",
             "show_label": self.label_style["show_var"].get(),
             "show_percent": self.percent_style["show_var"].get(),
+            "text_gap_px": self.text_gap_var.get(),
             "label_style": label_style,
             "percent_style": percent_style,
             "low_path": low_path,
@@ -1041,6 +1053,7 @@ class ItemEditorDialog(ScrollableDialogMixin, DeviceSelectorMixin, MediaPickerMi
             sound_cooldown_sec=self.item.sound_cooldown_sec,
             show_label=self.label_style["show_var"].get(),
             show_percent=self.percent_style["show_var"].get(),
+            text_gap_px=self.text_gap_var.get(),
             enter_animation=self.enter_keys[self.enter_combo.current()],
             exit_animation=self.exit_keys[self.exit_combo.current()],
             nudge_group_id=nudge_group_id,
@@ -1179,31 +1192,39 @@ class EffectEditorDialog(ScrollableDialogMixin, DeviceSelectorMixin, MediaPicker
         self.text_anim_combo.current(self.text_anim_keys.index(self.effect.text_animation) if self.effect.text_animation in self.text_anim_keys else 0)
         self.text_anim_combo.bind("<<ComboboxSelected>>", lambda e: self._push_preview_if_active())
 
-        ttk.Label(text_frame, text=i18n.t_piqad("lbl_font")).grid(row=2, column=0, sticky="w", padx=6, pady=3)
+        ttk.Label(text_frame, text=i18n.t_piqad("lbl_text_distance")).grid(row=2, column=0, sticky="w", padx=6, pady=3)
+        self.text_gap_var = tk.IntVar(value=self.effect.text_gap_px)
+        ttk.Spinbox(
+            text_frame, from_=0, to=200, textvariable=self.text_gap_var, width=6,
+            command=self._push_preview_if_active,
+        ).grid(row=2, column=1, sticky="w", padx=6)
+        ttk.Label(text_frame, text=i18n.t_piqad("hint_text_distance"), foreground="#666").grid(row=2, column=2, columnspan=2, sticky="w", padx=6)
+
+        ttk.Label(text_frame, text=i18n.t_piqad("lbl_font")).grid(row=3, column=0, sticky="w", padx=6, pady=3)
         self.font_combo = ttk.Combobox(text_frame, values=FONT_CHOICES, state="normal", width=18)
         self.font_combo.set(self.effect.font_family)
-        self.font_combo.grid(row=2, column=1, sticky="w", padx=6)
+        self.font_combo.grid(row=3, column=1, sticky="w", padx=6)
         self.font_combo.bind("<<ComboboxSelected>>", lambda e: self._push_preview_if_active())
         self.font_combo.bind("<KeyRelease>", lambda e: self._push_preview_if_active())
 
-        ttk.Label(text_frame, text=i18n.t_piqad("lbl_size")).grid(row=2, column=2, sticky="w", padx=6)
+        ttk.Label(text_frame, text=i18n.t_piqad("lbl_size")).grid(row=3, column=2, sticky="w", padx=6)
         self.font_size_var = tk.IntVar(value=self.effect.font_size_px)
-        ttk.Spinbox(text_frame, from_=8, to=96, textvariable=self.font_size_var, width=5, command=self._push_preview_if_active).grid(row=2, column=3, sticky="w", padx=6)
+        ttk.Spinbox(text_frame, from_=8, to=96, textvariable=self.font_size_var, width=5, command=self._push_preview_if_active).grid(row=3, column=3, sticky="w", padx=6)
 
-        ttk.Label(text_frame, text=i18n.t_piqad("lbl_font_color")).grid(row=3, column=0, sticky="w", padx=6, pady=3)
+        ttk.Label(text_frame, text=i18n.t_piqad("lbl_font_color")).grid(row=4, column=0, sticky="w", padx=6, pady=3)
         self.font_color_btn, self.font_color_var = _make_color_button(text_frame, self.effect.font_color, self._push_preview_if_active)
-        self.font_color_btn.grid(row=3, column=1, sticky="w", padx=6)
+        self.font_color_btn.grid(row=4, column=1, sticky="w", padx=6)
 
         self.outline_var = tk.BooleanVar(value=self.effect.outline_enabled)
-        ttk.Checkbutton(text_frame, text=i18n.t_piqad("chk_outline"), variable=self.outline_var, command=self._push_preview_if_active).grid(row=3, column=2, sticky="w", padx=6)
+        ttk.Checkbutton(text_frame, text=i18n.t_piqad("chk_outline"), variable=self.outline_var, command=self._push_preview_if_active).grid(row=4, column=2, sticky="w", padx=6)
 
-        ttk.Label(text_frame, text=i18n.t_piqad("lbl_thickness")).grid(row=4, column=0, sticky="w", padx=6, pady=3)
+        ttk.Label(text_frame, text=i18n.t_piqad("lbl_thickness")).grid(row=5, column=0, sticky="w", padx=6, pady=3)
         self.outline_thickness_var = tk.IntVar(value=self.effect.outline_thickness_px)
-        ttk.Spinbox(text_frame, from_=1, to=10, textvariable=self.outline_thickness_var, width=5, command=self._push_preview_if_active).grid(row=4, column=1, sticky="w", padx=6)
+        ttk.Spinbox(text_frame, from_=1, to=10, textvariable=self.outline_thickness_var, width=5, command=self._push_preview_if_active).grid(row=5, column=1, sticky="w", padx=6)
 
-        ttk.Label(text_frame, text=i18n.t_piqad("lbl_outline_color")).grid(row=4, column=2, sticky="w", padx=6)
+        ttk.Label(text_frame, text=i18n.t_piqad("lbl_outline_color")).grid(row=5, column=2, sticky="w", padx=6)
         self.outline_color_btn, self.outline_color_var = _make_color_button(text_frame, self.effect.outline_color, self._push_preview_if_active)
-        self.outline_color_btn.grid(row=4, column=3, sticky="w", padx=6)
+        self.outline_color_btn.grid(row=5, column=3, sticky="w", padx=6)
 
         pos_frame = self._build_position_frame(inner, self.effect.id, self.effect.x_pct, self.effect.y_pct, self.effect.width_px)
         pos_frame.grid(row=6, column=0, columnspan=2, sticky="ew", **pad)
@@ -1298,6 +1319,7 @@ class EffectEditorDialog(ScrollableDialogMixin, DeviceSelectorMixin, MediaPicker
             "device_class_hint": self.effect.device_class_hint or "Other",
             "text": self.text_entry.get(),
             "text_position": self.text_pos_keys[self.text_pos_combo.current()],
+            "text_gap_px": self.text_gap_var.get(),
             "font_family": self.font_combo.get() or "Segoe UI",
             "font_size_px": self.font_size_var.get(),
             "font_color": self.font_color_var["hex"],
@@ -1349,6 +1371,7 @@ class EffectEditorDialog(ScrollableDialogMixin, DeviceSelectorMixin, MediaPicker
             duration_sec=self.duration_sec_var.get(),
             text=self.text_entry.get(),
             text_position=self.text_pos_keys[self.text_pos_combo.current()],
+            text_gap_px=self.text_gap_var.get(),
             font_family=self.font_combo.get() or "Segoe UI",
             font_size_px=self.font_size_var.get(),
             font_color=self.font_color_var["hex"],

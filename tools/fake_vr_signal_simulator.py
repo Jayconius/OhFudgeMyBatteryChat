@@ -14,15 +14,15 @@ just start both. Or run from source:
 
     python tools/fake_vr_signal_simulator.py [--data-dir PATH]
 
-If the real app's config already has Devices/Effects configured, this tool
-lists those exact devices so you're driving your real, already-styled
-overlay. Otherwise it falls back to a generic placeholder rig - a Headset,
-two Controllers, five Trackers (hip, both feet, both knees - a typical
-5-point full body tracking setup), and three Lighthouses/base stations
-(connect/disconnect only, no battery - matching real hardware) - add real
-Device items pointed at DEMO-HMD-01/DEMO-CTRL-L/DEMO-CTRL-R/
-DEMO-TRACKER-01..05/DEMO-LIGHTHOUSE-01..03 from the app's own Add Device
-screen if you want to drive those instead.
+Always shows the same generic placeholder rig - a Headset, two Controllers,
+five Trackers (hip, both feet, both knees - a typical 5-point full body
+tracking setup), and three Lighthouses/base stations (connect/disconnect
+only, no battery - matching real hardware) - regardless of what's configured
+in the real app, so they're always there to demo/test against instead of
+disappearing once you remove the last Device/Effect that referenced them.
+Point real Device/Effect items at DEMO-HMD-01/DEMO-CTRL-L/DEMO-CTRL-R/
+DEMO-TRACKER-01..05/DEMO-LIGHTHOUSE-01..03 from the app's own Add screens to
+drive those.
 """
 import argparse
 import json
@@ -35,7 +35,6 @@ from tkinter import ttk
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
 
-from app import config as config_mod
 from app import paths as paths_mod
 from app import theme as theme_mod
 
@@ -171,21 +170,11 @@ def main():
     print(f"Writing fake signal to: {signal_path}")
     print("Make sure OhFudgeMyBatteryChat.exe (v1.2.0+) is running from the SAME Data folder to see it.")
 
-    cfg = config_mod.load()
-    serials_in_config = {}
-    for it in cfg.items:
-        serials_in_config[it.device_serial] = (it.device_class_hint or "Other", it.label)
-    for ef in cfg.effects:
-        if ef.device_serial:
-            serials_in_config.setdefault(ef.device_serial, (ef.device_class_hint or "Other", ef.label))
-
-    devices = []  # (serial, device_class, model, role, label)
-    if serials_in_config:
-        for serial, (device_class, label) in serials_in_config.items():
-            devices.append((serial, device_class, f"{device_class} (simulated)", "", label))
-    else:
-        for serial, device_class, model, role in PLACEHOLDER_DEVICES:
-            devices.append((serial, device_class, model, role, model))
+    # Always the full placeholder rig, regardless of what's configured in the
+    # real app - these devices need to keep existing across every launch so
+    # they're always available for demoing/testing, not just while some
+    # Device/Effect item still references their serial.
+    devices = [(serial, device_class, model, role, model) for serial, device_class, model, role in PLACEHOLDER_DEVICES]
 
     app = SimulatorApp(signal_path, devices)
     app.mainloop()
