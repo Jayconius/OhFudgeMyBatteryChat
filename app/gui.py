@@ -122,13 +122,14 @@ def _brand_model_text(dev):
     return f"{manufacturer} {model}"
 
 
-def _device_display(serial, dev):
+def _device_display(serial, dev, offline=False):
     cls = i18n.t(f"devclass_{dev.device_class}")
     role = f" {dev.role}" if dev.role else ""
     batt = _battery_display(dev)
     brand_model = _brand_model_text(dev)
     model = f" ({brand_model})" if brand_model else ""
-    return f"{cls}{role}{model} - {batt} - {serial}"
+    suffix = f" ({i18n.t('device_offline_suffix')})" if offline else ""
+    return f"{cls}{role}{model} - {batt} - {serial}{suffix}"
 
 
 def _build_language_combo(parent, on_change):
@@ -333,15 +334,32 @@ class FirstRunNoticeDialog(tk.Toplevel):
 
 
 class DeviceSelectorMixin:
-    """Shared 'pick a live SteamVR device, or type a serial manually' UI."""
+    """Shared 'pick a live SteamVR device, or type a serial manually' UI.
 
-    def _build_device_selector(self, parent, current_serial, exclude_serials=None):
+    A device can appear in the picker three ways, in priority order:
+    1. Currently connected (live).
+    2. Seen earlier this run but disconnected now (known_devices) - shown
+       when "Show offline devices" is checked, or unconditionally if it's
+       the item/effect's own already-saved device (so editing something
+       whose device just went offline never shows a bare "no device"
+       error).
+    3. Neither (e.g. a fresh launch with everything powered off, so nothing
+       has connected yet this run) - the item/effect's own saved serial and
+       class hint are synthesized into a placeholder entry, so it's still
+       representable and Save still works.
+    None of this is a separate persistent registry - it all comes from
+    whatever the item/effect itself already has saved, or from what's
+    actually connected/known this run."""
+
+    def _build_device_selector(self, parent, current_serial, current_class_hint=None, exclude_serials=None):
         device_frame = ttk.LabelFrame(parent, text=i18n.t_piqad("frame_device"))
 
         self._selector_current_serial = current_serial
+        self._selector_current_class_hint = current_class_hint
         self._exclude_serials = set(exclude_serials or ())
         self.manual_var = tk.BooleanVar(value=False)
         self.show_used_var = tk.BooleanVar(value=False)
+        self.show_offline_var = tk.BooleanVar(value=False)
         self._compute_device_lists()
 
         self.device_combo = ttk.Combobox(device_frame, values=self._device_values, width=55, state="readonly")
@@ -362,6 +380,11 @@ class DeviceSelectorMixin:
                 variable=self.show_used_var, command=self._refresh_devices,
             ).grid(row=3, column=0, columnspan=2, sticky="w", padx=6)
 
+        ttk.Checkbutton(
+            device_frame, text=i18n.t_piqad("chk_show_offline_devices"),
+            variable=self.show_offline_var, command=self._refresh_devices,
+        ).grid(row=4, column=0, columnspan=2, sticky="w", padx=6)
+
         self.manual_serial_entry = ttk.Entry(device_frame, width=40)
         self.manual_serial_entry.insert(0, current_serial)
         self._toggle_manual()
@@ -376,13 +399,35 @@ class DeviceSelectorMixin:
 
     def _compute_device_lists(self):
         snapshot = self.vr_monitor.get_snapshot()
-        self._live_devices = snapshot.devices
-        hide = set() if self.show_used_var.get() else self._exclude_serials
-        visible = {
-            s: d for s, d in snapshot.devices.items()
-            if s not in hide or s == self._selector_current_serial
-        }
-        self._device_values = [_device_display(s, d) for s, d in visible.items()]
+        live = snapshot.devices
+        current = self._selector_current_serial
+
+        # known_devices is always a superset of devices (updated with the
+        # latest live set every poll, see vr_monitor._apply_devices), so
+        # starting from it already covers tiers 1 and 2 in one dict.
+        selectable = dict(snapshot.known_devices)
+        if current and current not in selectable:
+            # Tier 3: nothing has connected yet this run at all (e.g. a
+            # fresh launch with everything powered off) - fall back to
+            # what this item/effect already has saved, so it's still
+            # representable and Save still works.
+            selectable[current] = SimpleNamespace(
+                device_class=self._selector_current_class_hint or "Other",
+                model="", role="", manufacturer="", battery_pct=None, charging=None,
+            )
+
+        hide_used = set() if self.show_used_var.get() else self._exclude_serials
+        show_offline = self.show_offline_var.get()
+        visible = {}
+        for s, d in selectable.items():
+            if s != current and s in hide_used:
+                continue
+            if s != current and s not in live and not show_offline:
+                continue
+            visible[s] = d
+
+        self._selectable_devices = selectable
+        self._device_values = [_device_display(s, d, offline=(s not in live)) for s, d in visible.items()]
         self._device_serials = list(visible.keys())
 
     def _refresh_devices(self):
@@ -407,7 +452,7 @@ class DeviceSelectorMixin:
             messagebox.showerror(i18n.t("err_no_device_title"), i18n.t("err_pick_device"), parent=self)
             return None
         serial = self._device_serials[idx]
-        return serial, self._live_devices[serial].device_class
+        return serial, self._selectable_devices[serial].device_class
 
 
 class MediaPickerMixin:
@@ -856,7 +901,7 @@ class ItemEditorDialog(ScrollableDialogMixin, NudgeGroupMixin, DeviceSelectorMix
 
         inner, vsb = self._build_scroll_container()
 
-        device_frame = self._build_device_selector(inner, self.item.device_serial, exclude_serials=self.exclude_serials)
+        device_frame = self._build_device_selector(inner, self.item.device_serial, current_class_hint=self.item.device_class_hint, exclude_serials=self.exclude_serials)
         device_frame.grid(row=0, column=0, columnspan=2, sticky="ew", **pad)
 
         basics = ttk.LabelFrame(inner, text=i18n.t_piqad("frame_basics"))
@@ -1299,7 +1344,7 @@ class EffectEditorDialog(ScrollableDialogMixin, NudgeGroupMixin, DeviceSelectorM
                 command=self._update_target_mode_visibility,
             ).pack(side="left", padx=(0, 10))
 
-        self.device_frame = self._build_device_selector(frame, self.effect.device_serial, exclude_serials=self.exclude_serials)
+        self.device_frame = self._build_device_selector(frame, self.effect.device_serial, current_class_hint=self.effect.device_class_hint, exclude_serials=self.exclude_serials)
         self.device_frame.grid(row=1, column=0, columnspan=2, sticky="ew", padx=6, pady=3)
 
         self.ignore_frame = ttk.Frame(frame)
