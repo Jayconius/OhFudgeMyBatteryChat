@@ -32,7 +32,7 @@ from .server import ServerController
 from .vr_monitor import VRMonitor
 
 APP_TITLE = "Oh Fudge, My Battery Chat!"  # the pun stays the same in every language
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.2.1"
 APP_AUTHOR = "Jayconius"
 APP_GITHUB_URL = "https://github.com/Jayconius/OhFudgeMyBatteryChat"
 APP_CONTACT_URL = "https://jayconius.com"
@@ -85,9 +85,10 @@ FONT_CHOICES = ["Segoe UI", "Arial", "Impact", "Comic Sans MS", "Verdana", "Geor
 
 
 def _battery_display(dev):
-    """Base stations are mains/USB-powered - no battery to report, ever.
+    """Base stations are mains/USB-powered, and the SteamVR Service pseudo-
+    device isn't hardware at all - neither has a battery to report, ever.
     Say so plainly instead of showing the same 'n/a' a real read failure would."""
-    if dev.device_class == "TrackingReference":
+    if dev.device_class in ("TrackingReference", "Service"):
         return i18n.t("battery_no_battery")
     return f"{dev.battery_pct:.0f}%" if dev.battery_pct is not None else "n/a"
 
@@ -708,7 +709,111 @@ class ScrollableDialogMixin:
         self.geometry(f"{width}x{total_h}")
 
 
-class ItemEditorDialog(ScrollableDialogMixin, DeviceSelectorMixin, MediaPickerMixin, AnimationPickerMixin, PositionCanvasMixin, PreviewMixin, tk.Toplevel):
+class NudgeGroupMixin:
+    """Shared 'Nudge Group' UI (assign a name/direction/spacing so several
+    Device items and Effects share one drag-adjusted position and stack
+    into it in arrival order) - used by both ItemEditorDialog and
+    EffectEditorDialog so, e.g., a Lighthouse-disconnect Effect can nudge
+    into the very same slot as a stack of low-battery Device alerts.
+    Callers must set self._nudge_owner (the OverlayItem or EffectItem being
+    edited) and self.nudge_groups (the shared list[NudgeGroup]) before
+    calling _build_nudge_frame."""
+
+    def _find_group(self, group_id):
+        if not group_id:
+            return None
+        return next((g for g in self.nudge_groups if g.id == group_id), None)
+
+    def _build_nudge_frame(self, parent):
+        frame = ttk.LabelFrame(parent, text=i18n.t_piqad("frame_nudge"))
+
+        current_group = self._find_group(self._nudge_owner.nudge_group_id)
+
+        self.nudge_enabled_var = tk.BooleanVar(value=current_group is not None)
+        ttk.Checkbutton(
+            frame, text=i18n.t_piqad("chk_nudge_enabled"), variable=self.nudge_enabled_var,
+            command=self._update_nudge_controls_state,
+        ).grid(row=0, column=0, columnspan=4, sticky="w", padx=6, pady=(3, 0))
+
+        ttk.Label(frame, text=i18n.t_piqad("lbl_nudge_group")).grid(row=1, column=0, sticky="w", padx=6, pady=3)
+        group_names = [g.name for g in self.nudge_groups]
+        self.nudge_group_combo = ttk.Combobox(frame, values=group_names, width=22)
+        self.nudge_group_combo.set(current_group.name if current_group else "")
+        self.nudge_group_combo.grid(row=1, column=1, columnspan=3, sticky="w", padx=6, pady=3)
+        self.nudge_group_combo.bind("<<ComboboxSelected>>", self._on_nudge_group_picked)
+
+        ttk.Label(frame, text=i18n.t_piqad("hint_nudge"), foreground="#666", wraplength=460, justify="left").grid(row=2, column=0, columnspan=4, sticky="w", padx=6)
+
+        ttk.Label(frame, text=i18n.t_piqad("lbl_nudge_direction")).grid(row=3, column=0, sticky="w", padx=6, pady=3)
+        self.nudge_direction_keys = list(config_mod.NUDGE_DIRECTION_OPTIONS.keys())
+        self.nudge_direction_combo = ttk.Combobox(frame, values=[i18n.t_piqad(f"nudgedir_{k}") for k in self.nudge_direction_keys], state="readonly", width=10)
+        start = (current_group.direction if current_group else "left")
+        start = start if start in self.nudge_direction_keys else "left"
+        self.nudge_direction_combo.current(self.nudge_direction_keys.index(start))
+        self.nudge_direction_combo.grid(row=3, column=1, sticky="w", padx=6)
+
+        ttk.Label(frame, text=i18n.t_piqad("lbl_nudge_spacing")).grid(row=3, column=2, sticky="w", padx=6)
+        self.nudge_spacing_var = tk.IntVar(value=current_group.spacing_px if current_group else 20)
+        self.nudge_spacing_spin = ttk.Spinbox(frame, from_=0, to=500, textvariable=self.nudge_spacing_var, width=6)
+        self.nudge_spacing_spin.grid(row=3, column=3, sticky="w", padx=6)
+
+        self._update_nudge_controls_state()
+        return frame
+
+    def _update_nudge_controls_state(self):
+        on = self.nudge_enabled_var.get()
+        self.nudge_group_combo.configure(state="normal" if on else "disabled")
+        self.nudge_direction_combo.configure(state="readonly" if on else "disabled")
+        self.nudge_spacing_spin.configure(state="normal" if on else "disabled")
+        self._push_preview_if_active()
+
+    def _on_nudge_group_picked(self, event=None):
+        """Picking an *existing* group from the dropdown jumps this item's
+        position/direction/spacing to match it - no manual lining-up needed."""
+        name = self.nudge_group_combo.get().strip()
+        group = next((g for g in self.nudge_groups if g.name == name), None)
+        if not group:
+            return
+        self.nudge_enabled_var.set(True)
+        self._update_nudge_controls_state()
+        self.x_pct = group.x_pct
+        self.y_pct = group.y_pct
+        if group.direction in self.nudge_direction_keys:
+            self.nudge_direction_combo.current(self.nudge_direction_keys.index(group.direction))
+        self.nudge_spacing_var.set(group.spacing_px)
+        self._redraw_canvas()
+        self._push_preview_if_active()
+
+    def _resolve_nudge_group(self):
+        """Type a new name -> creates a group (using this dialog's current
+        position/direction/spacing). Pick/type an existing name -> updates
+        that shared group's position/direction/spacing from this dialog,
+        moving every other device/effect using it too. Checkbox unchecked ->
+        no group at all, regardless of what's typed in the field."""
+        if not self.nudge_enabled_var.get():
+            return None
+        name = self.nudge_group_combo.get().strip()
+        if not name:
+            return None
+        direction = self.nudge_direction_keys[self.nudge_direction_combo.current()]
+        spacing = self.nudge_spacing_var.get()
+        existing = next((g for g in self.nudge_groups if g.name == name), None)
+        if existing:
+            existing.x_pct = self.x_pct
+            existing.y_pct = self.y_pct
+            existing.direction = direction
+            existing.spacing_px = spacing
+            return existing.id
+        new_group = config_mod.NudgeGroup(
+            id=config_mod.new_group_id(), name=name,
+            x_pct=self.x_pct, y_pct=self.y_pct,
+            direction=direction, spacing_px=spacing,
+        )
+        self.nudge_groups.append(new_group)
+        return new_group.id
+
+
+class ItemEditorDialog(ScrollableDialogMixin, NudgeGroupMixin, DeviceSelectorMixin, MediaPickerMixin, AnimationPickerMixin, PositionCanvasMixin, PreviewMixin, tk.Toplevel):
     def __init__(self, parent, vr_monitor: VRMonitor, item: config_mod.OverlayItem, other_items, preview_state=None, nudge_groups=None, exclude_serials=None):
         super().__init__(parent)
         self.withdraw()
@@ -717,6 +822,7 @@ class ItemEditorDialog(ScrollableDialogMixin, DeviceSelectorMixin, MediaPickerMi
         theme.apply_window_theme(self, getattr(parent, "dark_mode", False))
         self.vr_monitor = vr_monitor
         self.item = item
+        self._nudge_owner = item
         self.other_items = other_items
         self.nudge_groups = nudge_groups if nudge_groups is not None else []
         self.exclude_serials = exclude_serials
@@ -893,71 +999,6 @@ class ItemEditorDialog(ScrollableDialogMixin, DeviceSelectorMixin, MediaPickerMi
             outline_color=style["outline_color_state"]["hex"],
         )
 
-    def _find_group(self, group_id):
-        if not group_id:
-            return None
-        return next((g for g in self.nudge_groups if g.id == group_id), None)
-
-    def _build_nudge_frame(self, parent):
-        frame = ttk.LabelFrame(parent, text=i18n.t_piqad("frame_nudge"))
-
-        current_group = self._find_group(self.item.nudge_group_id)
-
-        self.nudge_enabled_var = tk.BooleanVar(value=current_group is not None)
-        ttk.Checkbutton(
-            frame, text=i18n.t_piqad("chk_nudge_enabled"), variable=self.nudge_enabled_var,
-            command=self._update_nudge_controls_state,
-        ).grid(row=0, column=0, columnspan=4, sticky="w", padx=6, pady=(3, 0))
-
-        ttk.Label(frame, text=i18n.t_piqad("lbl_nudge_group")).grid(row=1, column=0, sticky="w", padx=6, pady=3)
-        group_names = [g.name for g in self.nudge_groups]
-        self.nudge_group_combo = ttk.Combobox(frame, values=group_names, width=22)
-        self.nudge_group_combo.set(current_group.name if current_group else "")
-        self.nudge_group_combo.grid(row=1, column=1, columnspan=3, sticky="w", padx=6, pady=3)
-        self.nudge_group_combo.bind("<<ComboboxSelected>>", self._on_nudge_group_picked)
-
-        ttk.Label(frame, text=i18n.t_piqad("hint_nudge"), foreground="#666", wraplength=460, justify="left").grid(row=2, column=0, columnspan=4, sticky="w", padx=6)
-
-        ttk.Label(frame, text=i18n.t_piqad("lbl_nudge_direction")).grid(row=3, column=0, sticky="w", padx=6, pady=3)
-        self.nudge_direction_keys = list(config_mod.NUDGE_DIRECTION_OPTIONS.keys())
-        self.nudge_direction_combo = ttk.Combobox(frame, values=[i18n.t_piqad(f"nudgedir_{k}") for k in self.nudge_direction_keys], state="readonly", width=10)
-        start = (current_group.direction if current_group else "left")
-        start = start if start in self.nudge_direction_keys else "left"
-        self.nudge_direction_combo.current(self.nudge_direction_keys.index(start))
-        self.nudge_direction_combo.grid(row=3, column=1, sticky="w", padx=6)
-
-        ttk.Label(frame, text=i18n.t_piqad("lbl_nudge_spacing")).grid(row=3, column=2, sticky="w", padx=6)
-        self.nudge_spacing_var = tk.IntVar(value=current_group.spacing_px if current_group else 20)
-        self.nudge_spacing_spin = ttk.Spinbox(frame, from_=0, to=500, textvariable=self.nudge_spacing_var, width=6)
-        self.nudge_spacing_spin.grid(row=3, column=3, sticky="w", padx=6)
-
-        self._update_nudge_controls_state()
-        return frame
-
-    def _update_nudge_controls_state(self):
-        on = self.nudge_enabled_var.get()
-        self.nudge_group_combo.configure(state="normal" if on else "disabled")
-        self.nudge_direction_combo.configure(state="readonly" if on else "disabled")
-        self.nudge_spacing_spin.configure(state="normal" if on else "disabled")
-        self._push_preview_if_active()
-
-    def _on_nudge_group_picked(self, event=None):
-        """Picking an *existing* group from the dropdown jumps this item's
-        position/direction/spacing to match it - no manual lining-up needed."""
-        name = self.nudge_group_combo.get().strip()
-        group = next((g for g in self.nudge_groups if g.name == name), None)
-        if not group:
-            return
-        self.nudge_enabled_var.set(True)
-        self._update_nudge_controls_state()
-        self.x_pct = group.x_pct
-        self.y_pct = group.y_pct
-        if group.direction in self.nudge_direction_keys:
-            self.nudge_direction_combo.current(self.nudge_direction_keys.index(group.direction))
-        self.nudge_spacing_var.set(group.spacing_px)
-        self._redraw_canvas()
-        self._push_preview_if_active()
-
     def _on_media_changed(self, kind):
         if kind == "low":
             self._push_preview_if_active()
@@ -1072,8 +1113,8 @@ class ItemEditorDialog(ScrollableDialogMixin, DeviceSelectorMixin, MediaPickerMi
         self.destroy()
 
 
-class EffectEditorDialog(ScrollableDialogMixin, DeviceSelectorMixin, MediaPickerMixin, AnimationPickerMixin, PositionCanvasMixin, PreviewMixin, tk.Toplevel):
-    def __init__(self, parent, vr_monitor: VRMonitor, effect: config_mod.EffectItem, other_items, preview_state=None, exclude_serials=None):
+class EffectEditorDialog(ScrollableDialogMixin, NudgeGroupMixin, DeviceSelectorMixin, MediaPickerMixin, AnimationPickerMixin, PositionCanvasMixin, PreviewMixin, tk.Toplevel):
+    def __init__(self, parent, vr_monitor: VRMonitor, effect: config_mod.EffectItem, other_items, preview_state=None, nudge_groups=None, exclude_serials=None):
         super().__init__(parent)
         self.withdraw()
         self.title(i18n.t("dlg_title_effect"))
@@ -1081,7 +1122,9 @@ class EffectEditorDialog(ScrollableDialogMixin, DeviceSelectorMixin, MediaPicker
         theme.apply_window_theme(self, getattr(parent, "dark_mode", False))
         self.vr_monitor = vr_monitor
         self.effect = effect
+        self._nudge_owner = effect
         self.other_items = other_items
+        self.nudge_groups = nudge_groups if nudge_groups is not None else []
         self.exclude_serials = exclude_serials
         self.result = None
         self._init_preview(preview_state)
@@ -1140,8 +1183,11 @@ class EffectEditorDialog(ScrollableDialogMixin, DeviceSelectorMixin, MediaPicker
 
         self.label_entry.bind("<KeyRelease>", lambda e: self._push_preview_if_active())
 
+        self.nudge_frame = self._build_nudge_frame(inner)
+        self.nudge_frame.grid(row=3, column=0, columnspan=2, sticky="ew", **pad)
+
         duration_frame = ttk.LabelFrame(inner, text=i18n.t_piqad("frame_duration"))
-        duration_frame.grid(row=3, column=0, columnspan=2, sticky="ew", **pad)
+        duration_frame.grid(row=4, column=0, columnspan=2, sticky="ew", **pad)
         self.duration_mode_keys = list(config_mod.DURATION_MODE_OPTIONS.keys())
         self.duration_mode_var = tk.StringVar(
             value=self.effect.duration_mode if self.effect.duration_mode in self.duration_mode_keys else "always"
@@ -1162,7 +1208,7 @@ class EffectEditorDialog(ScrollableDialogMixin, DeviceSelectorMixin, MediaPicker
         self._update_duration_visibility()
 
         media = ttk.LabelFrame(inner, text=i18n.t_piqad("frame_media"))
-        media.grid(row=4, column=0, columnspan=2, sticky="ew", **pad)
+        media.grid(row=5, column=0, columnspan=2, sticky="ew", **pad)
         _, self.picture_anim_combo, self.picture_anim_keys = self._media_row(
             media, 0, i18n.t_piqad("lbl_picture"), "picture", self.effect.picture,
             anim_default=self.effect.picture_animation, anim_change_cb=self._push_preview_if_active,
@@ -1170,7 +1216,7 @@ class EffectEditorDialog(ScrollableDialogMixin, DeviceSelectorMixin, MediaPicker
         self._media_row(media, 1, i18n.t_piqad("lbl_warning_sound"), "sound", self.effect.sound, sound=True)
 
         text_frame = ttk.LabelFrame(inner, text=i18n.t_piqad("frame_caption"))
-        text_frame.grid(row=5, column=0, columnspan=2, sticky="ew", **pad)
+        text_frame.grid(row=6, column=0, columnspan=2, sticky="ew", **pad)
 
         ttk.Label(text_frame, text=i18n.t_piqad("lbl_text")).grid(row=0, column=0, sticky="w", padx=6, pady=3)
         self.text_entry = ttk.Entry(text_frame, width=30)
@@ -1227,7 +1273,7 @@ class EffectEditorDialog(ScrollableDialogMixin, DeviceSelectorMixin, MediaPicker
         self.outline_color_btn.grid(row=5, column=3, sticky="w", padx=6)
 
         pos_frame = self._build_position_frame(inner, self.effect.id, self.effect.x_pct, self.effect.y_pct, self.effect.width_px)
-        pos_frame.grid(row=6, column=0, columnspan=2, sticky="ew", **pad)
+        pos_frame.grid(row=7, column=0, columnspan=2, sticky="ew", **pad)
 
         self._update_target_mode_visibility()
         self._cap_dialog_height(inner, vsb)
@@ -1348,6 +1394,7 @@ class EffectEditorDialog(ScrollableDialogMixin, DeviceSelectorMixin, MediaPicker
 
         default_label = serial if mode == "specific" else i18n.t(f"targetmode_{mode}")
         label = self.label_entry.get().strip() or default_label
+        nudge_group_id = self._resolve_nudge_group()
 
         effect = config_mod.EffectItem(
             id=self.effect.id,
@@ -1367,6 +1414,7 @@ class EffectEditorDialog(ScrollableDialogMixin, DeviceSelectorMixin, MediaPicker
             sound_cooldown_sec=self.effect.sound_cooldown_sec,
             enter_animation=self.enter_keys[self.enter_combo.current()],
             exit_animation=self.exit_keys[self.exit_combo.current()],
+            nudge_group_id=nudge_group_id,
             duration_mode=self.duration_mode_var.get(),
             duration_sec=self.duration_sec_var.get(),
             text=self.text_entry.get(),
@@ -1705,8 +1753,9 @@ class MainWindow(tk.Tk):
 
     def _all_positionables(self):
         """Every placed thing (devices + effects), for canvas snapping/display.
-        Devices in a Nudge group are resolved to the group's shared position,
-        so the preview/snapping reflects where they actually render."""
+        Anything in a Nudge group (Device items and Effects alike) is
+        resolved to the group's shared position, so the preview/snapping
+        reflects where they actually render."""
         groups_by_id = {g.id: g for g in self.cfg.nudge_groups}
         result = []
         for it in self.cfg.items:
@@ -1715,7 +1764,10 @@ class MainWindow(tk.Tk):
             y_pct = group.y_pct if group else it.y_pct
             result.append(SimpleNamespace(id=it.id, label=it.label, x_pct=x_pct, y_pct=y_pct, width_px=it.width_px))
         for ef in self.cfg.effects:
-            result.append(SimpleNamespace(id=ef.id, label=ef.label, x_pct=ef.x_pct, y_pct=ef.y_pct, width_px=ef.width_px))
+            group = groups_by_id.get(ef.nudge_group_id) if ef.nudge_group_id else None
+            x_pct = group.x_pct if group else ef.x_pct
+            y_pct = group.y_pct if group else ef.y_pct
+            result.append(SimpleNamespace(id=ef.id, label=ef.label, x_pct=x_pct, y_pct=y_pct, width_px=ef.width_px))
         return result
 
     def _selected_entry(self):
@@ -1756,7 +1808,7 @@ class MainWindow(tk.Tk):
 
     def _add_effect(self):
         new_effect = config_mod.EffectItem(id=config_mod.new_effect_id(), label="", device_serial="")
-        dlg = EffectEditorDialog(self, self.vr_monitor, new_effect, self._all_positionables(), preview_state=self.server.preview_state, exclude_serials=self._used_device_serials())
+        dlg = EffectEditorDialog(self, self.vr_monitor, new_effect, self._all_positionables(), preview_state=self.server.preview_state, nudge_groups=self.cfg.nudge_groups, exclude_serials=self._used_device_serials())
         self.wait_window(dlg)
         if dlg.result:
             self.cfg.effects.append(dlg.result)
@@ -1779,7 +1831,7 @@ class MainWindow(tk.Tk):
                 config_mod.save(self.cfg)
                 self._refresh_item_tree()
         else:
-            dlg = EffectEditorDialog(self, self.vr_monitor, obj, others, preview_state=self.server.preview_state, exclude_serials=exclude_serials)
+            dlg = EffectEditorDialog(self, self.vr_monitor, obj, others, preview_state=self.server.preview_state, nudge_groups=self.cfg.nudge_groups, exclude_serials=exclude_serials)
             self.wait_window(dlg)
             if dlg.result:
                 idx = next(i for i, ef in enumerate(self.cfg.effects) if ef.id == obj.id)
@@ -1804,14 +1856,19 @@ class MainWindow(tk.Tk):
     # -- polling loop ---------------------------------------------------
     def _tick(self):
         snapshot = self.vr_monitor.get_snapshot()
+        # The SteamVR Service pseudo-device (for a Disconnected/Connected
+        # Effect trigger on SteamVR itself) isn't a piece of hardware - keep
+        # it out of the visible device count/list, which is about what's
+        # actually plugged in.
+        real_devices = {s: d for s, d in snapshot.devices.items() if d.device_class != "Service"}
         if snapshot.steamvr_connected:
-            self.steamvr_status_var.set(i18n.t("steamvr_connected_fmt").format(n=len(snapshot.devices)))
+            self.steamvr_status_var.set(i18n.t("steamvr_connected_fmt").format(n=len(real_devices)))
         else:
             msg = snapshot.error or i18n.t("steamvr_not_detected")
             self.steamvr_status_var.set(f"{i18n.t('steamvr_prefix')} {msg}")
 
         self.device_tree.delete(*self.device_tree.get_children())
-        for serial, dev in snapshot.devices.items():
+        for serial, dev in real_devices.items():
             cls = i18n.t(f"devclass_{dev.device_class}")
             if dev.role:
                 cls += f" {dev.role}"

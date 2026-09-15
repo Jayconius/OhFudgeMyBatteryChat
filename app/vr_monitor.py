@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from typing import Dict, Optional
 
 from . import paths
+from .device_ids import STEAMVR_SERVICE_SERIAL  # re-exported for existing callers of vr_monitor.STEAMVR_SERVICE_SERIAL
 
 try:
     import openvr
@@ -28,6 +29,11 @@ except ImportError:  # pragma: no cover - dev environments without the package y
     openvr = None
 
 FAKE_SIGNAL_MAX_AGE_SEC = 3.0  # simulator heartbeats faster than this; older -> treated as gone
+
+# get_snapshot() injects the STEAMVR_SERVICE_SERIAL pseudo-device based on
+# steamvr_connected; while a fake signal from the Simulator is active, the
+# Simulator's own explicit inclusion/exclusion of this serial takes over
+# instead (see get_snapshot()).
 
 CLASS_NAMES = {
     getattr(openvr, "TrackedDeviceClass_HMD", 1): "HMD",
@@ -55,6 +61,7 @@ class Snapshot:
     devices: Dict[str, DeviceState] = field(default_factory=dict)  # currently connected only
     known_devices: Dict[str, DeviceState] = field(default_factory=dict)  # every serial ever seen this run, incl. now-disconnected ones (last-known state)
     error: str = ""
+    simulated: bool = False  # this cycle's data came from the fake-signal Simulator, not real OpenVR
 
 
 class VRMonitor:
@@ -82,12 +89,33 @@ class VRMonitor:
 
     def get_snapshot(self) -> Snapshot:
         with self._lock:
-            return Snapshot(
-                steamvr_connected=self._snapshot.steamvr_connected,
-                devices=dict(self._snapshot.devices),
-                known_devices=dict(self._snapshot.known_devices),
-                error=self._snapshot.error,
+            steamvr_connected = self._snapshot.steamvr_connected
+            devices = dict(self._snapshot.devices)
+            known_devices = dict(self._snapshot.known_devices)
+            error = self._snapshot.error
+            simulated = self._snapshot.simulated
+
+        if not simulated:
+            # Real hardware never reports a serial we didn't just make up, so
+            # it's always safe to inject/overwrite this one - while the
+            # Simulator's fake signal is active, its own explicit inclusion/
+            # exclusion of this same serial is authoritative instead, so this
+            # branch is skipped entirely rather than fighting it.
+            service = DeviceState(
+                serial=STEAMVR_SERVICE_SERIAL, device_class="Service", model="SteamVR",
+                index=-1, battery_pct=None, charging=None, role="", manufacturer="",
             )
+            known_devices[STEAMVR_SERVICE_SERIAL] = service
+            if steamvr_connected:
+                devices[STEAMVR_SERVICE_SERIAL] = service
+
+        return Snapshot(
+            steamvr_connected=steamvr_connected,
+            devices=devices,
+            known_devices=known_devices,
+            error=error,
+            simulated=simulated,
+        )
 
     def _shutdown_openvr(self):
         if self._vr_system is not None and openvr is not None:
@@ -110,15 +138,17 @@ class VRMonitor:
             with self._lock:
                 self._snapshot.steamvr_connected = False
                 self._snapshot.error = f"SteamVR not found ({exc})"
+                self._snapshot.simulated = False
             return False
 
-    def _apply_devices(self, devices: Dict[str, DeviceState], connected: bool, error: str = ""):
+    def _apply_devices(self, devices: Dict[str, DeviceState], connected: bool, error: str = "", simulated: bool = False):
         self._known.update(devices)  # remember every serial seen, even after it disconnects
         with self._lock:
             self._snapshot.steamvr_connected = connected
             self._snapshot.devices = devices
             self._snapshot.known_devices = dict(self._known)
             self._snapshot.error = error
+            self._snapshot.simulated = simulated
 
     def _read_fake_signal(self) -> Optional[Dict[str, DeviceState]]:
         """Returns a devices dict from the fake-signal file if it exists and
@@ -226,7 +256,7 @@ class VRMonitor:
         while not self._stop.is_set():
             fake_devices = self._read_fake_signal()
             if fake_devices is not None:
-                self._apply_devices(fake_devices, connected=True)
+                self._apply_devices(fake_devices, connected=True, simulated=True)
                 self._stop.wait(self.poll_interval_sec)
                 continue
 
@@ -240,5 +270,6 @@ class VRMonitor:
                 with self._lock:
                     self._snapshot.steamvr_connected = False
                     self._snapshot.error = f"Lost connection to SteamVR ({exc})"
+                    self._snapshot.simulated = False
                 self._shutdown_openvr()
             self._stop.wait(self.poll_interval_sec)

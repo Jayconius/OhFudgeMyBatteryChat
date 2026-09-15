@@ -58,6 +58,16 @@ def _make_class_icon(name: str, shape: str, color: str) -> str:
     elif shape == "base_station":
         d.polygon([(cx, 20), (108, cy), (cx, 108), (20, cy)], outline=color, width=7)
         d.ellipse([cx - 10, cy - 10, cx + 10, cy + 10], outline=color, width=5)
+    elif shape == "service":
+        # A hexagon ("background system/service" motif, distinct from the
+        # base station's diamond) with a small dot in the middle.
+        radius = 46
+        points = [
+            (cx + radius * math.cos(math.radians(60 * i - 90)), cy + radius * math.sin(math.radians(60 * i - 90)))
+            for i in range(6)
+        ]
+        d.polygon(points, outline=color, width=7)
+        d.ellipse([cx - 9, cy - 9, cx + 9, cy + 9], outline=color, width=5)
     else:  # generic
         d.ellipse([20, 20, 108, 108], outline=color, width=7)
         _battery_glyph(d, cx, cy, color, fraction=0.8)
@@ -103,6 +113,7 @@ DEFAULT_NORMAL_ICONS = {
     "Controller": ("controller_normal.png", "controller", "#59c2ff"),
     "GenericTracker": ("tracker_normal.png", "tracker", "#59c2ff"),
     "TrackingReference": ("base_station_normal.png", "base_station", "#59c2ff"),
+    "Service": ("service_normal.png", "service", "#59c2ff"),
     "Other": ("generic_normal.png", "generic", "#59c2ff"),
 }
 DEFAULT_LOW_ICON = ("low_battery.png", "#ff5c5c")

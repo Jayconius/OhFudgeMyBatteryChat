@@ -16,13 +16,17 @@ just start both. Or run from source:
 
 Always shows the same generic placeholder rig - a Headset, two Controllers,
 five Trackers (hip, both feet, both knees - a typical 5-point full body
-tracking setup), and three Lighthouses/base stations (connect/disconnect
-only, no battery - matching real hardware) - regardless of what's configured
-in the real app, so they're always there to demo/test against instead of
+tracking setup), three Lighthouses/base stations (connect/disconnect only,
+no battery - matching real hardware), and the SteamVR Service pseudo-device
+itself (also connect/disconnect only) - regardless of what's configured in
+the real app, so they're always there to demo/test against instead of
 disappearing once you remove the last Device/Effect that referenced them.
 Point real Device/Effect items at DEMO-HMD-01/DEMO-CTRL-L/DEMO-CTRL-R/
 DEMO-TRACKER-01..05/DEMO-LIGHTHOUSE-01..03 from the app's own Add screens to
-drive those.
+drive those; the SteamVR Service row drives the same pseudo-device the real
+app synthesizes on its own from steamvr_connected when nothing is simulated
+(see vr_monitor.STEAMVR_SERVICE_SERIAL) - unchecking it here simulates
+SteamVR crashing/closing without touching any other device.
 """
 import argparse
 import json
@@ -37,9 +41,13 @@ sys.path.insert(0, PROJECT_ROOT)
 
 from app import paths as paths_mod
 from app import theme as theme_mod
+from app.device_ids import STEAMVR_SERVICE_SERIAL
 
 APP_TITLE = "Oh Fudge - Fake SteamVR Signal Simulator"
 HEARTBEAT_MS = 1000  # must be well under vr_monitor.FAKE_SIGNAL_MAX_AGE_SEC
+
+# Device classes with no battery to report - just a Connected toggle.
+NO_BATTERY_CLASSES = ("TrackingReference", "Service")
 
 PLACEHOLDER_DEVICES = [
     # (serial, device_class, model, role)
@@ -57,6 +65,9 @@ PLACEHOLDER_DEVICES = [
     ("DEMO-LIGHTHOUSE-01", "TrackingReference", "Demo Lighthouse 1", ""),
     ("DEMO-LIGHTHOUSE-02", "TrackingReference", "Demo Lighthouse 2", ""),
     ("DEMO-LIGHTHOUSE-03", "TrackingReference", "Demo Lighthouse 3", ""),
+    # The SteamVR background service itself - not hardware, so no battery
+    # either; unchecking Connected simulates SteamVR crashing/closing.
+    (STEAMVR_SERVICE_SERIAL, "Service", "SteamVR Service", ""),
 ]
 
 
@@ -93,7 +104,7 @@ class SimulatorApp(tk.Tk):
             display = f"{label} ({device_class}{' ' + role if role else ''})"
             ttk.Label(self, text=display, width=32).grid(row=i, column=0, padx=(10, 4), pady=4, sticky="w")
 
-            has_battery = device_class != "TrackingReference"
+            has_battery = device_class not in NO_BATTERY_CLASSES
             if has_battery:
                 var = tk.IntVar(value=80)
                 self.battery_vars[serial] = var

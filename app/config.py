@@ -129,10 +129,11 @@ class OverlayItem:
 
 @dataclasses.dataclass
 class NudgeGroup:
-    """A named, reusable shared position for Nudge: every Device item
-    assigned to a group renders at the group's position (not its own),
-    and shares one direction/spacing - so moving one member moves them all,
-    and adding a device to a group needs no manual lining-up."""
+    """A named, reusable shared position for Nudge: every Device item or
+    Effect assigned to a group renders at the group's position (not its
+    own), and shares one direction/spacing - so moving one member moves them
+    all, adding something to a group needs no manual lining-up, and Devices
+    and Effects can stack into the very same slot together."""
     id: str
     name: str
     x_pct: float = 50.0
@@ -171,6 +172,7 @@ class EffectItem:
     sound_cooldown_sec: int = 300
     enter_animation: str = "pop_bottom"
     exit_animation: str = "fade"
+    nudge_group_id: Optional[str] = None  # if set, position/direction/spacing come from that NudgeGroup - shared with Device items
     duration_mode: str = "always"        # see DURATION_MODE_OPTIONS
     duration_sec: float = 5.0            # only used when duration_mode == "timed"
     text: str = ""

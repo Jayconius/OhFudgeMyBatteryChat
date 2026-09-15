@@ -26,6 +26,7 @@ DEFAULTS_BY_CLASS = {
     "Controller": "/defaults/controller_normal.png",
     "GenericTracker": "/defaults/tracker_normal.png",
     "TrackingReference": "/defaults/base_station_normal.png",
+    "Service": "/defaults/service_normal.png",
     "Other": "/defaults/generic_normal.png",
     "_generic": "/defaults/generic_normal.png",
     "_low": "/defaults/low_battery.png",
@@ -196,17 +197,20 @@ def _item_payload(item, defaults_by_class: dict, nudge_groups_by_id: dict):
     }
 
 
-def _effect_payload(effect, defaults_by_class: dict):
+def _effect_payload(effect, defaults_by_class: dict, nudge_groups_by_id: dict):
     pic = config_mod.resolve_media(effect.picture)
     sound = config_mod.resolve_media(effect.sound)
+    group = nudge_groups_by_id.get(effect.nudge_group_id) if effect.nudge_group_id else None
+    x_pct = group.x_pct if group else effect.x_pct
+    y_pct = group.y_pct if group else effect.y_pct
     return {
         "id": effect.id,
         "label": effect.label,
         "device_serial": effect.device_serial,
         "target_mode": effect.target_mode,
         "ignore_device_serials": list(effect.ignore_device_serials),
-        "x_pct": effect.x_pct,
-        "y_pct": effect.y_pct,
+        "x_pct": x_pct,
+        "y_pct": y_pct,
         "width_px": effect.width_px,
         "trigger": effect.trigger,
         "low_threshold_pct": effect.low_threshold_pct,
@@ -214,6 +218,10 @@ def _effect_payload(effect, defaults_by_class: dict):
         "picture_animation": effect.picture_animation,
         "enter_animation": effect.enter_animation,
         "exit_animation": effect.exit_animation,
+        "nudge_enabled": group is not None,
+        "nudge_group_id": effect.nudge_group_id or "",
+        "nudge_direction": group.direction if group else "left",
+        "nudge_spacing_px": group.spacing_px if group else 0,
         "duration_mode": effect.duration_mode,
         "duration_sec": effect.duration_sec,
         "text": effect.text,
@@ -491,6 +499,7 @@ for (const item of ITEMS) {
 
 for (const effect of EFFECTS) {
   const { el, pic } = buildEffectElement(effect);
+  if (effect.nudge_enabled) el.classList.add('nudge-enabled');
   el.style.left = effect.x_pct + '%';
   el.style.top = effect.y_pct + '%';
   el.style.width = effect.width_px + 'px';
@@ -498,7 +507,7 @@ for (const effect of EFFECTS) {
   root.appendChild(el);
 
   const audio = effect.sound_src ? new Audio(effect.sound_src) : null;
-  effectState[effect.id] = { lastShown: false, shown: false, lastSoundTs: 0, el, audio, suppressed: false, timedHideJob: null };
+  effectState[effect.id] = { lastShown: false, shown: false, nudgeArrival: 0, lastSoundTs: 0, el, audio, suppressed: false, timedHideJob: null };
 }
 
 // Evaluates the trigger against a single device's live state ('dev' is
@@ -611,31 +620,38 @@ function runPreviewLoop(p) {
   cycle();
 }
 
-// Groups currently-visible Nudge-enabled Device items by anchor position +
-// direction, then lines them up in arrival order (newest = original spot,
-// older ones pushed back) - recomputed fresh every poll tick, so both new
-// arrivals and departures (re-compacting the line) fall out naturally.
+// Groups currently-visible Nudge-enabled Device items AND Effects by anchor
+// position + direction (mixed together in the same group), then lines them
+// up in arrival order (newest = original spot, older ones pushed back) -
+// recomputed fresh every poll tick, so both new arrivals and departures
+// (re-compacting the line) fall out naturally, and a Device and an Effect
+// sharing one group stack into the very same slots.
 function applyNudgeLayout() {
   const groups = {};
-  for (const item of ITEMS) {
-    if (!item.nudge_enabled || !item.nudge_group_id) continue;
-    const s = state[item.id];
+  for (const obj of ITEMS) {
+    if (!obj.nudge_enabled || !obj.nudge_group_id) continue;
+    const s = state[obj.id];
     if (!s.shown) continue;
-    const key = item.nudge_group_id;
-    (groups[key] = groups[key] || []).push({ item, s });
+    (groups[obj.nudge_group_id] = groups[obj.nudge_group_id] || []).push({ obj, s });
+  }
+  for (const obj of EFFECTS) {
+    if (!obj.nudge_enabled || !obj.nudge_group_id) continue;
+    const s = effectState[obj.id];
+    if (!s.shown) continue;
+    (groups[obj.nudge_group_id] = groups[obj.nudge_group_id] || []).push({ obj, s });
   }
   for (const key in groups) {
     const members = groups[key];
     members.sort((a, b) => b.s.nudgeArrival - a.s.nudgeArrival); // newest first = slot 0
     members.forEach((m, slot) => {
-      const pitchPx = m.item.width_px + m.item.nudge_spacing_px;
+      const pitchPx = m.obj.width_px + m.obj.nudge_spacing_px;
       let dxPx = 0, dyPx = 0;
-      if (m.item.nudge_direction === 'left') dxPx = -slot * pitchPx;
-      else if (m.item.nudge_direction === 'right') dxPx = slot * pitchPx;
-      else if (m.item.nudge_direction === 'up') dyPx = -slot * pitchPx;
-      else if (m.item.nudge_direction === 'down') dyPx = slot * pitchPx;
-      m.s.el.style.left = (m.item.x_pct + dxPx / 1920 * 100) + '%';
-      m.s.el.style.top = (m.item.y_pct + dyPx / 1080 * 100) + '%';
+      if (m.obj.nudge_direction === 'left') dxPx = -slot * pitchPx;
+      else if (m.obj.nudge_direction === 'right') dxPx = slot * pitchPx;
+      else if (m.obj.nudge_direction === 'up') dyPx = -slot * pitchPx;
+      else if (m.obj.nudge_direction === 'down') dyPx = slot * pitchPx;
+      m.s.el.style.left = (m.obj.x_pct + dxPx / 1920 * 100) + '%';
+      m.s.el.style.top = (m.obj.y_pct + dyPx / 1080 * 100) + '%';
     });
   }
 }
@@ -700,8 +716,6 @@ async function poll() {
       s.lastLow = isLow;
     }
 
-    applyNudgeLayout();
-
     for (const effect of EFFECTS) {
       const s = effectState[effect.id];
       const shouldShow = effectShouldShow(effect, data);
@@ -718,6 +732,7 @@ async function poll() {
         const enterKey = ENTER_KEYFRAMES[effect.enter_animation] || ENTER_KEYFRAMES.pop_bottom;
         s.el.style.animation = `${enterKey} ${ENTER_DUR_MS}ms cubic-bezier(0.34,1.56,0.64,1) forwards`;
         s.shown = true;
+        s.nudgeArrival = ++nudgeArrivalCounter;
 
         if (timed) {
           // Auto-hide after the configured duration regardless of whether
@@ -751,6 +766,8 @@ async function poll() {
       }
       s.lastShown = shouldShow;
     }
+
+    applyNudgeLayout();
 
     if (data.preview && data.preview.active) {
       if (data.preview.nonce !== previewLastNonce) {
@@ -881,7 +898,7 @@ class _Handler(BaseHTTPRequestHandler):
         default_assets.ensure_defaults()
         nudge_groups_by_id = {g.id: g for g in cfg.nudge_groups}
         items_json = json.dumps([_item_payload(it, DEFAULTS_BY_CLASS, nudge_groups_by_id) for it in cfg.items])
-        effects_json = json.dumps([_effect_payload(ef, DEFAULTS_BY_CLASS) for ef in cfg.effects])
+        effects_json = json.dumps([_effect_payload(ef, DEFAULTS_BY_CLASS, nudge_groups_by_id) for ef in cfg.effects])
         html = OVERLAY_PAGE_TEMPLATE.replace("__APP_TITLE__", APP_TITLE)
         html = html.replace("__ITEMS_JSON__", items_json)
         html = html.replace("__EFFECTS_JSON__", effects_json)

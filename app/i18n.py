@@ -130,6 +130,7 @@ STRINGS = {
     "devclass_GenericTracker": {"en": "Tracker", "de": "Tracker", "fr": "Traceur", "es": "Rastreador", "ja": "トラッカー", "tlh": "tlha' mIw"},
     "devclass_TrackingReference": {"en": "Base Station", "de": "Basisstation", "fr": "Station de base", "es": "Estación base", "ja": "ベースステーション", "tlh": "waw' pa'"},
     "devclass_Other": {"en": "Other", "de": "Andere", "fr": "Autre", "es": "Otro", "ja": "その他", "tlh": "latlh"},
+    "devclass_Service": {"en": "Service", "de": "Dienst", "fr": "Service", "es": "Servicio", "ja": "サービス", "tlh": "toy'"},
 
     # -- About / Language -------------------------------------------------
     "about_btn": {"en": "ℹ About", "de": "ℹ Info", "fr": "ℹ À propos", "es": "ℹ Acerca de", "ja": "ℹ 情報", "tlh": "ℹ Del"},
@@ -214,12 +215,12 @@ STRINGS = {
     "chk_nudge_enabled": {"en": "Enable Nudge", "de": "Verschieben aktivieren", "fr": "Activer le décalage", "es": "Activar desplazamiento", "ja": "ずらし配置を有効化", "tlh": "tlhoy chu'"},
     "lbl_nudge_group": {"en": "Group:", "de": "Gruppe:", "fr": "Groupe :", "es": "Grupo:", "ja": "グループ:", "tlh": "chal:"},
     "hint_nudge": {
-        "en": "Type a new name to create a group, or pick an existing one - devices in the same group share one position: saving this item moves everyone in the group. When two or more are visible at once, newer ones take the spot and older ones slide over to make room.",
-        "de": "Geben Sie einen neuen Namen ein, um eine Gruppe zu erstellen, oder wählen Sie eine vorhandene - Geräte in derselben Gruppe teilen sich eine Position: Speichern verschiebt alle in der Gruppe. Sind zwei oder mehr gleichzeitig sichtbar, nimmt das neuere den Platz ein und ältere rutschen zur Seite.",
-        "fr": "Tapez un nouveau nom pour créer un groupe, ou choisissez-en un existant - les appareils du même groupe partagent une position : enregistrer déplace tout le groupe. Si plusieurs sont visibles en même temps, le plus récent prend la place et les plus anciens se décalent.",
-        "es": "Escribe un nombre nuevo para crear un grupo, o elige uno existente - los dispositivos del mismo grupo comparten una posición: guardar mueve a todo el grupo. Cuando hay dos o más visibles a la vez, el más nuevo ocupa el sitio y los más antiguos se desplazan.",
-        "ja": "新しい名前を入力してグループを作成するか、既存のグループを選んでください。同じグループのデバイスは位置を共有します：保存するとグループ全員が移動します。複数同時に表示される場合、新しいものが場所を占め、古いものはずれます。",
-        "tlh": "pong chu' yIghItlh chal chenmoH, pagh chal ghajbogh yIwIv - chal rap Daq je; polmoHDI' Hoch chal vIH. cha' Duy rap-boch cha'lu'chugh, chu' Duy Daq tlhap, qan Duy tlhoy.",
+        "en": "Type a new name to create a group, or pick an existing one - Devices and Effects in the same group share one position: saving this moves everyone in the group. When two or more are visible at once, newer ones take the spot and older ones slide over to make room.",
+        "de": "Geben Sie einen neuen Namen ein, um eine Gruppe zu erstellen, oder wählen Sie eine vorhandene - Geräte und Effekte in derselben Gruppe teilen sich eine Position: Speichern verschiebt alle in der Gruppe. Sind zwei oder mehr gleichzeitig sichtbar, nimmt das neuere den Platz ein und ältere rutschen zur Seite.",
+        "fr": "Tapez un nouveau nom pour créer un groupe, ou choisissez-en un existant - les appareils et effets du même groupe partagent une position : enregistrer déplace tout le groupe. Si plusieurs sont visibles en même temps, le plus récent prend la place et les plus anciens se décalent.",
+        "es": "Escribe un nombre nuevo para crear un grupo, o elige uno existente - los dispositivos y efectos del mismo grupo comparten una posición: guardar mueve a todo el grupo. Cuando hay dos o más visibles a la vez, el más nuevo ocupa el sitio y los más antiguos se desplazan.",
+        "ja": "新しい名前を入力してグループを作成するか、既存のグループを選んでください。同じグループのデバイスとエフェクトは位置を共有します：保存するとグループ全員が移動します。複数同時に表示される場合、新しいものが場所を占め、古いものはずれます。",
+        "tlh": "pong chu' yIghItlh chal chenmoH, pagh chal ghajbogh yIwIv - chal rap Daq je Duy nab je; polmoHDI' Hoch chal vIH. cha' Duy rap-boch cha'lu'chugh, chu' Duy Daq tlhap, qan Duy tlhoy.",
     },
     "lbl_nudge_direction": {"en": "Direction:", "de": "Richtung:", "fr": "Direction :", "es": "Dirección:", "ja": "方向:", "tlh": "Hop:"},
     "lbl_nudge_spacing": {"en": "Spacing (px):", "de": "Abstand (px):", "fr": "Espacement (px) :", "es": "Espaciado (px):", "ja": "間隔（px）:", "tlh": "tIn (px):"},
