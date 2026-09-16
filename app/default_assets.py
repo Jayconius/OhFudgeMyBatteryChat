@@ -75,6 +75,21 @@ def _make_class_icon(name: str, shape: str, color: str) -> str:
     return _save(img, name)
 
 
+def tray_icon_image() -> Image.Image:
+    """An in-memory icon (no disk write) for the system tray - the same
+    "generic" device icon shape/style used elsewhere, at the same ICON_SIZE
+    (128) as everything else in this file (_battery_glyph's proportions are
+    tuned for that size) - pystray/the OS scale it down to whatever the
+    tray actually needs, same as any other tray icon library expects."""
+    img = Image.new("RGBA", (ICON_SIZE, ICON_SIZE), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    color = "#59c2ff"
+    cx, cy = ICON_SIZE // 2, ICON_SIZE // 2
+    d.ellipse([20, 20, 108, 108], outline=color, width=7)
+    _battery_glyph(d, cx, cy, color, fraction=0.8)
+    return img
+
+
 def _make_low_battery_icon(name: str, color: str) -> str:
     img = Image.new("RGBA", (ICON_SIZE, ICON_SIZE), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)

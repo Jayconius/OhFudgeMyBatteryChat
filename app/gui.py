@@ -220,6 +220,19 @@ class AboutDialog(tk.Toplevel):
         self.theme_combo.pack(side="left")
         self.theme_combo.bind("<<ComboboxSelected>>", self._on_theme_change)
 
+        close_row = ttk.Frame(frm)
+        close_row.pack(anchor="w", pady=(10, 0), fill="x")
+        ttk.Label(close_row, text=i18n.t_piqad("about_close_action_label")).pack(side="left", padx=(0, 6))
+        self.close_action_keys = list(config_mod.CLOSE_ACTION_OPTIONS.keys())
+        self.close_action_combo = ttk.Combobox(
+            close_row, values=[i18n.t_piqad(f"closeaction_{k}") for k in self.close_action_keys],
+            state="readonly", width=20,
+        )
+        start_close_action = parent.cfg.close_action if parent.cfg.close_action in self.close_action_keys else "ask"
+        self.close_action_combo.current(self.close_action_keys.index(start_close_action))
+        self.close_action_combo.pack(side="left")
+        self.close_action_combo.bind("<<ComboboxSelected>>", self._on_close_action_change)
+
         ttk.Button(frm, text=i18n.t_piqad("btn_restore_icons"), command=self._on_restore_icons).pack(anchor="w", pady=(12, 0))
 
         ttk.Button(frm, text=i18n.t_piqad("about_close"), command=self.destroy).pack(anchor="e", pady=(14, 0))
@@ -243,6 +256,11 @@ class AboutDialog(tk.Toplevel):
         self.main_window.cfg.theme = new_theme
         config_mod.save(self.main_window.cfg)
         messagebox.showinfo(i18n.t("about_theme_label"), i18n.t("msg_theme_restart"), parent=self)
+
+    def _on_close_action_change(self, event=None):
+        new_action = self.close_action_keys[self.close_action_combo.current()]
+        self.main_window.cfg.close_action = new_action
+        config_mod.save(self.main_window.cfg)
 
     def _on_restore_icons(self):
         confirmed = messagebox.askyesno(
@@ -331,6 +349,46 @@ class FirstRunNoticeDialog(tk.Toplevel):
         self.destroy()
         if self._lang_changed:
             self.main_window._rebuild_ui()
+
+
+class CloseActionDialog(tk.Toplevel):
+    """Shown once, the first time the window's close (X) button is used -
+    asks whether closing should minimize to the system tray (keep running
+    in the background, still serving the OBS overlay) or exit completely.
+    The choice is saved to cfg.close_action and applied immediately for
+    this close too, not just remembered for next time."""
+
+    def __init__(self, parent, on_choice):
+        super().__init__(parent)
+        self.withdraw()
+        self.on_choice = on_choice
+        self.title(i18n.t_piqad("close_action_title"))
+        self.resizable(False, False)
+        theme.apply_window_theme(self, getattr(parent, "dark_mode", False))
+
+        frm = ttk.Frame(self)
+        frm.pack(padx=18, pady=16)
+        ttk.Label(frm, text=i18n.t_piqad("close_action_title"), font=(_chrome_font_family(), 12, "bold")).pack(anchor="w")
+        ttk.Label(frm, text=i18n.t_piqad("close_action_body"), wraplength=440, justify="left").pack(anchor="w", pady=(10, 14))
+
+        btns = ttk.Frame(frm)
+        btns.pack(anchor="e")
+        ttk.Button(btns, text=i18n.t_piqad("close_action_exit_btn"), command=lambda: self._choose("exit")).pack(side="right", padx=(8, 0))
+        ttk.Button(btns, text=i18n.t_piqad("close_action_tray_btn"), command=lambda: self._choose("tray")).pack(side="right")
+
+        ttk.Label(frm, text=i18n.t_piqad("close_action_hint"), foreground="#666", wraplength=440, justify="left").pack(anchor="w", pady=(10, 0))
+
+        self.protocol("WM_DELETE_WINDOW", lambda: self._choose("exit"))
+        self.grab_set()
+        self.transient(parent)
+        # transient() re-parents the window at the Win32 level, which resets
+        # the DWM dark-titlebar attribute applied earlier - reapply after.
+        theme.apply_window_theme(self, getattr(parent, "dark_mode", False))
+        self.deiconify()
+
+    def _choose(self, action):
+        self.destroy()
+        self.on_choice(action)
 
 
 class DeviceSelectorMixin:
@@ -1507,6 +1565,7 @@ class MainWindow(tk.Tk):
         self._port_conflict = not self.server.start()
         self._port_flash_job = None
         self._port_tooltip = None
+        self._tray_icon = None
 
         self.title(APP_TITLE)
         self.geometry("860x560")
@@ -1923,6 +1982,53 @@ class MainWindow(tk.Tk):
         self.after(1500, self._tick)
 
     def _on_close(self):
+        if self.cfg.close_action == "ask":
+            CloseActionDialog(self, self._on_close_action_chosen)
+            return
+        if self.cfg.close_action == "tray":
+            self._minimize_to_tray()
+            return
+        self._exit_app()
+
+    def _on_close_action_chosen(self, action):
+        self.cfg.close_action = action
+        config_mod.save(self.cfg)
+        if action == "tray":
+            self._minimize_to_tray()
+        else:
+            self._exit_app()
+
+    def _minimize_to_tray(self):
+        self.withdraw()
+        if self._tray_icon is None:
+            self._start_tray_icon()
+
+    def _start_tray_icon(self):
+        import pystray
+        menu = pystray.Menu(
+            pystray.MenuItem(i18n.t_piqad("tray_show"), self._on_tray_show, default=True),
+            pystray.MenuItem(i18n.t_piqad("tray_exit"), self._on_tray_exit),
+        )
+        self._tray_icon = pystray.Icon("OhFudgeMyBatteryChat", default_assets.tray_icon_image(), APP_TITLE, menu)
+        threading.Thread(target=self._tray_icon.run, daemon=True).start()
+
+    def _on_tray_show(self, icon=None, item=None):
+        # pystray invokes menu actions on its own thread - Tkinter widgets
+        # must only be touched from the main thread, so hop back via after().
+        self.after(0, self._show_from_tray)
+
+    def _show_from_tray(self):
+        self.deiconify()
+        self.lift()
+        self.focus_force()
+
+    def _on_tray_exit(self, icon=None, item=None):
+        self.after(0, self._exit_app)
+
+    def _exit_app(self):
+        if self._tray_icon is not None:
+            self._tray_icon.stop()
+            self._tray_icon = None
         self.server.stop()
         self.vr_monitor.stop()
         self.destroy()

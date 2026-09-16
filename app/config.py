@@ -74,6 +74,11 @@ DURATION_MODE_OPTIONS = {
     "always": "Stay on screen while triggered",
     "timed": "Show for a set time, then hide",
 }
+CLOSE_ACTION_OPTIONS = {
+    "ask": "Ask me every time",  # only ever saved as a real choice below; shown in the About dropdown so it can be reset back to "ask again"
+    "tray": "Minimize to the system tray",
+    "exit": "Exit the app completely",
+}
 
 
 @dataclasses.dataclass
@@ -205,6 +210,7 @@ class AppConfig:
     check_for_updates: bool = False
     theme: str = "system"  # "system" | "light" | "dark" - see THEME_OPTIONS
     icon_check_version: str = ""  # last APP_VERSION the new-icons prompt ran for
+    close_action: str = "ask"  # see CLOSE_ACTION_OPTIONS - "ask" prompts once on the first close
     items: list = dataclasses.field(default_factory=list)         # list[OverlayItem]
     effects: list = dataclasses.field(default_factory=list)       # list[EffectItem]
     nudge_groups: list = dataclasses.field(default_factory=list)  # list[NudgeGroup]
@@ -219,6 +225,7 @@ class AppConfig:
             "check_for_updates": self.check_for_updates,
             "theme": self.theme,
             "icon_check_version": self.icon_check_version,
+            "close_action": self.close_action,
             "items": [it.to_dict() for it in self.items],
             "effects": [ef.to_dict() for ef in self.effects],
             "nudge_groups": [g.to_dict() for g in self.nudge_groups],
@@ -235,6 +242,7 @@ class AppConfig:
             check_for_updates=d.get("check_for_updates", False),
             theme=d.get("theme", "system"),
             icon_check_version=d.get("icon_check_version", ""),
+            close_action=d.get("close_action", "ask"),
         )
         cfg.items = [OverlayItem.from_dict(it) for it in d.get("items", [])]
         cfg.effects = [EffectItem.from_dict(ef) for ef in d.get("effects", [])]

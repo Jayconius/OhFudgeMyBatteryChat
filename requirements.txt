@@ -1,3 +1,4 @@
 openvr
 pillow
 pyinstaller
+pystray
