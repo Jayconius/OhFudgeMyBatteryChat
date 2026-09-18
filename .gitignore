@@ -12,9 +12,3 @@ __pycache__/
 
 # Editors
 .vscode/
-
-# Private session-continuity notes for an AI assistant - not for the repo
-HANDOFF.md
-
-# Archived chat-session transcript exports (personal backup, not source)
-chat_archives/
