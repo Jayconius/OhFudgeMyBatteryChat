@@ -32,7 +32,7 @@ from .server import ServerController
 from .vr_monitor import VRMonitor
 
 APP_TITLE = "Oh Fudge, My Battery Chat!"  # the pun stays the same in every language
-APP_VERSION = "1.2.1"
+APP_VERSION = "1.2.2"
 APP_AUTHOR = "Jayconius"
 APP_GITHUB_URL = "https://github.com/Jayconius/OhFudgeMyBatteryChat"
 APP_CONTACT_URL = "https://jayconius.com"
@@ -931,7 +931,10 @@ class ItemEditorDialog(ScrollableDialogMixin, NudgeGroupMixin, DeviceSelectorMix
         self.exclude_serials = exclude_serials
         self.result = None
         self._init_preview(preview_state)
-        self._pending_media = {"normal": None, "low": None, "sound": None}
+        self._pending_media = {
+            "normal": None, "low": None, "sound": None,
+            "charging": None, "warn_drain": None, "warn_drain_sound": None,
+        }
 
         self._build()
         self.protocol("WM_DELETE_WINDOW", self._on_cancel)
@@ -986,8 +989,11 @@ class ItemEditorDialog(ScrollableDialogMixin, NudgeGroupMixin, DeviceSelectorMix
 
         self.label_entry.bind("<KeyRelease>", lambda e: self._push_preview_if_active())
 
+        charging_frame = self._build_charging_frame(inner)
+        charging_frame.grid(row=4, column=0, columnspan=2, sticky="ew", **pad)
+
         caption_frame = ttk.LabelFrame(inner, text=i18n.t_piqad("frame_caption"))
-        caption_frame.grid(row=4, column=0, columnspan=2, sticky="ew", **pad)
+        caption_frame.grid(row=5, column=0, columnspan=2, sticky="ew", **pad)
 
         gap_row = ttk.Frame(caption_frame)
         gap_row.grid(row=0, column=0, columnspan=6, sticky="w", padx=6, pady=(6, 0))
@@ -1019,7 +1025,7 @@ class ItemEditorDialog(ScrollableDialogMixin, NudgeGroupMixin, DeviceSelectorMix
         )
 
         media = ttk.LabelFrame(inner, text=i18n.t_piqad("frame_media"))
-        media.grid(row=5, column=0, columnspan=2, sticky="ew", **pad)
+        media.grid(row=6, column=0, columnspan=2, sticky="ew", **pad)
         _, self.normal_anim_combo, self.normal_anim_keys = self._media_row(
             media, 0, i18n.t_piqad("lbl_normal_pic"), "normal", self.item.normal_image,
             anim_default=self.item.normal_pic_animation, anim_change_cb=self._push_preview_if_active,
@@ -1034,7 +1040,7 @@ class ItemEditorDialog(ScrollableDialogMixin, NudgeGroupMixin, DeviceSelectorMix
         start_x = start_group.x_pct if start_group else self.item.x_pct
         start_y = start_group.y_pct if start_group else self.item.y_pct
         pos_frame = self._build_position_frame(inner, self.item.id, start_x, start_y, self.item.width_px)
-        pos_frame.grid(row=6, column=0, columnspan=2, sticky="ew", **pad)
+        pos_frame.grid(row=7, column=0, columnspan=2, sticky="ew", **pad)
 
         self._update_anim_frame_visibility()
         self._cap_dialog_height(inner, vsb)
@@ -1106,13 +1112,60 @@ class ItemEditorDialog(ScrollableDialogMixin, NudgeGroupMixin, DeviceSelectorMix
         if kind == "low":
             self._push_preview_if_active()
 
+    def _build_charging_frame(self, parent):
+        """Always visible above Caption Text regardless of Always Visible /
+        Hidden until low, since charging can happen in either mode. Only the
+        "Hide when charging starts" row is mode-specific (Always Visible
+        items have nothing to hide) - shown/hidden by _update_anim_frame_visibility."""
+        frame = ttk.LabelFrame(parent, text=i18n.t_piqad("frame_charging"))
+
+        self.show_charging_var = tk.BooleanVar(value=self.item.show_charging_status)
+        ttk.Checkbutton(frame, text=i18n.t_piqad("chk_show_charging"), variable=self.show_charging_var).grid(
+            row=0, column=0, columnspan=6, sticky="w", padx=6, pady=(6, 0)
+        )
+        _, self.charging_anim_combo, self.charging_anim_keys = self._media_row(
+            frame, 1, i18n.t_piqad("lbl_charging_pic"), "charging", self.item.charging_image,
+            anim_default=self.item.charging_pic_animation,
+        )
+
+        ttk.Separator(frame, orient="horizontal").grid(row=2, column=0, columnspan=6, sticky="ew", padx=6, pady=6)
+
+        self.warn_drain_var = tk.BooleanVar(value=self.item.warn_drain_while_charging)
+        ttk.Checkbutton(frame, text=i18n.t_piqad("chk_warn_drain"), variable=self.warn_drain_var).grid(
+            row=3, column=0, columnspan=6, sticky="w", padx=6
+        )
+        _, self.warn_drain_anim_combo, self.warn_drain_anim_keys = self._media_row(
+            frame, 4, i18n.t_piqad("lbl_warn_drain_pic"), "warn_drain", self.item.warn_drain_image,
+            anim_default=self.item.warn_drain_pic_animation,
+        )
+        self._media_row(frame, 5, i18n.t_piqad("lbl_warn_drain_sound"), "warn_drain_sound", self.item.warn_drain_sound, sound=True)
+
+        cooldown_row = ttk.Frame(frame)
+        cooldown_row.grid(row=6, column=0, columnspan=6, sticky="w", padx=6, pady=(2, 6))
+        ttk.Label(cooldown_row, text=i18n.t_piqad("lbl_warn_drain_cooldown")).pack(side="left")
+        self.warn_drain_cooldown_var = tk.IntVar(value=self.item.warn_drain_sound_cooldown_sec)
+        ttk.Spinbox(cooldown_row, from_=5, to=3600, textvariable=self.warn_drain_cooldown_var, width=6).pack(side="left", padx=(6, 4))
+        ttk.Label(cooldown_row, text=i18n.t_piqad("lbl_duration_seconds")).pack(side="left")
+
+        ttk.Separator(frame, orient="horizontal").grid(row=7, column=0, columnspan=6, sticky="ew", padx=6, pady=6)
+
+        self.hide_on_charging_var = tk.BooleanVar(value=self.item.hide_on_charging)
+        self.hide_on_charging_chk = ttk.Checkbutton(
+            frame, text=i18n.t_piqad("chk_hide_on_charging"), variable=self.hide_on_charging_var
+        )
+        self.hide_on_charging_chk.grid(row=8, column=0, columnspan=6, sticky="w", padx=6, pady=(0, 6))
+
+        return frame
+
     def _update_anim_frame_visibility(self):
         if self.mode_var.get() == "low_only":
             self.anim_frame.grid()
             self.nudge_frame.grid()
+            self.hide_on_charging_chk.grid()
         else:
             self.anim_frame.grid_remove()
             self.nudge_frame.grid_remove()
+            self.hide_on_charging_chk.grid_remove()
             self._stop_preview()
 
     def _current_preview_payload(self):
@@ -1201,11 +1254,23 @@ class ItemEditorDialog(ScrollableDialogMixin, NudgeGroupMixin, DeviceSelectorMix
             enter_animation=self.enter_keys[self.enter_combo.current()],
             exit_animation=self.exit_keys[self.exit_combo.current()],
             nudge_group_id=nudge_group_id,
+            show_charging_status=self.show_charging_var.get(),
+            charging_image=self.item.charging_image,
+            charging_pic_animation=self.charging_anim_keys[self.charging_anim_combo.current()],
+            warn_drain_while_charging=self.warn_drain_var.get(),
+            warn_drain_image=self.item.warn_drain_image,
+            warn_drain_pic_animation=self.warn_drain_anim_keys[self.warn_drain_anim_combo.current()],
+            warn_drain_sound=self.item.warn_drain_sound,
+            warn_drain_sound_cooldown_sec=self.warn_drain_cooldown_var.get(),
+            hide_on_charging=self.hide_on_charging_var.get(),
             **{f"label_{k}": v for k, v in self._read_text_style(self.label_style).items()},
             **{f"percent_{k}": v for k, v in self._read_text_style(self.percent_style).items()},
         )
 
-        for kind, attr in (("normal", "normal_image"), ("low", "low_image"), ("sound", "sound")):
+        for kind, attr in (
+            ("normal", "normal_image"), ("low", "low_image"), ("sound", "sound"),
+            ("charging", "charging_image"), ("warn_drain", "warn_drain_image"), ("warn_drain_sound", "warn_drain_sound"),
+        ):
             picked = self._pending_media.get(kind)
             if picked:
                 rel = config_mod.import_media(item.id, picked, kind)

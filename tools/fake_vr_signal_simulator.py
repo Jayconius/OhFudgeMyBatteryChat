@@ -88,6 +88,7 @@ class SimulatorApp(tk.Tk):
         self.device_meta = {}    # serial -> (device_class, model, role, manufacturer)
         self.battery_vars = {}   # serial -> IntVar
         self.connected_vars = {}  # serial -> BooleanVar
+        self.charging_vars = {}  # serial -> BooleanVar (battery-having devices only)
 
         ttk.Label(self, text="Fake SteamVR Signal Simulator", font=("Segoe UI", 11, "bold")).grid(
             row=0, column=0, columnspan=4, padx=10, pady=(10, 2), sticky="w"
@@ -115,6 +116,12 @@ class SimulatorApp(tk.Tk):
                 pct_lbl = ttk.Label(self, text="80%", width=5)
                 pct_lbl.grid(row=i, column=2, padx=4, pady=4)
                 var.trace_add("write", lambda *a, var=var, lbl=pct_lbl: lbl.configure(text=f"{int(var.get())}%"))
+
+                charging_var = tk.BooleanVar(value=False)
+                self.charging_vars[serial] = charging_var
+                ttk.Checkbutton(self, text="Charging", variable=charging_var).grid(
+                    row=i, column=4, padx=(4, 10), pady=4
+                )
             else:
                 # Base stations/lighthouses are mains-powered in real life -
                 # no battery slider, just the Connected toggle.
@@ -142,11 +149,12 @@ class SimulatorApp(tk.Tk):
             if not self.connected_vars[serial].get():
                 continue
             battery_var = self.battery_vars.get(serial)
+            charging_var = self.charging_vars.get(serial)
             devices[serial] = {
                 "device_class": device_class,
                 "model": model,
                 "battery_pct": battery_var.get() if battery_var is not None else None,
-                "charging": False,
+                "charging": charging_var.get() if charging_var is not None else False,
                 "role": role,
                 "manufacturer": manufacturer,
             }

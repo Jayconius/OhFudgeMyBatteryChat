@@ -30,6 +30,8 @@ DEFAULTS_BY_CLASS = {
     "Other": "/defaults/generic_normal.png",
     "_generic": "/defaults/generic_normal.png",
     "_low": "/defaults/low_battery.png",
+    "_charging": "/defaults/charging.png",
+    "_warn_drain": "/defaults/drain_warning.png",
     "_beep": "/defaults/warning_beep.wav",
 }
 
@@ -149,6 +151,9 @@ def _item_payload(item, defaults_by_class: dict, nudge_groups_by_id: dict):
     normal = config_mod.resolve_media(item.normal_image)
     low = config_mod.resolve_media(item.low_image)
     sound = config_mod.resolve_media(item.sound)
+    charging = config_mod.resolve_media(item.charging_image)
+    warn_drain = config_mod.resolve_media(item.warn_drain_image)
+    warn_drain_sound = config_mod.resolve_media(item.warn_drain_sound)
     group = nudge_groups_by_id.get(item.nudge_group_id) if item.nudge_group_id else None
     x_pct = group.x_pct if group else item.x_pct
     y_pct = group.y_pct if group else item.y_pct
@@ -194,6 +199,15 @@ def _item_payload(item, defaults_by_class: dict, nudge_groups_by_id: dict):
         "normal_src": f"/media/{item.id}/normal" if normal else defaults_by_class.get(item.device_class_hint, defaults_by_class.get("_generic", "")),
         "low_src": f"/media/{item.id}/low" if low else defaults_by_class.get("_low", ""),
         "sound_src": f"/media/{item.id}/sound" if sound else defaults_by_class.get("_beep", ""),
+        "show_charging_status": item.show_charging_status,
+        "charging_pic_animation": item.charging_pic_animation,
+        "charging_src": f"/media/{item.id}/charging" if charging else defaults_by_class.get("_charging", ""),
+        "warn_drain_while_charging": item.warn_drain_while_charging,
+        "warn_drain_pic_animation": item.warn_drain_pic_animation,
+        "warn_drain_src": f"/media/{item.id}/warn_drain" if warn_drain else defaults_by_class.get("_warn_drain", ""),
+        "warn_drain_sound_cooldown_sec": item.warn_drain_sound_cooldown_sec,
+        "warn_drain_sound_src": f"/media/{item.id}/warn_drain_sound" if warn_drain_sound else defaults_by_class.get("_beep", ""),
+        "hide_on_charging": item.hide_on_charging,
     }
 
 
@@ -366,6 +380,10 @@ const EXIT_KEYFRAMES = {
 };
 const ENTER_DUR_MS = 500;
 const EXIT_DUR_MS = 450;
+// How far below the battery% recorded when charging last started counts as
+// "still draining" - a margin (not a raw comparison) so a report that's flat
+// or only down a fraction of a percent doesn't false-trigger the warning.
+const DRAIN_MARGIN_PCT = 2;
 
 function isVideoSrc(src) { return /\.webm($|\?)/i.test(src || ''); }
 
@@ -494,7 +512,16 @@ for (const item of ITEMS) {
   root.appendChild(el);
 
   const audio = item.sound_src ? new Audio(item.sound_src) : null;
-  state[item.id] = { lastLow: false, shown: false, nudgeArrival: 0, lastSoundTs: 0, el, audio, pic, pct: pctSpan };
+  const warnAudio = item.warn_drain_sound_src ? new Audio(item.warn_drain_sound_src) : null;
+  state[item.id] = {
+    lastLow: false, shown: false, nudgeArrival: 0, lastSoundTs: 0, el, audio, pic, pct: pctSpan,
+    // Charging/drain-warning tracking - chargingBaselinePct is the
+    // battery_pct at the moment charging was last observed turning on;
+    // comparing against that fixed point (rather than the previous poll)
+    // avoids false triggers from SteamVR's bursty, non-continuous battery
+    // reporting.
+    wasCharging: false, chargingBaselinePct: null, warnAudio, lastWarnSoundTs: 0, lastDraining: false,
+  };
 }
 
 for (const effect of EFFECTS) {
@@ -676,29 +703,55 @@ async function poll() {
       if (!dev) {
         if (item.show_mode === 'always') { s.el.classList.remove('visible'); }
         else { s.el.style.display = 'none'; s.shown = false; }
+        s.wasCharging = false;
+        s.chargingBaselinePct = null;
         continue;
       }
 
       const battery = dev.battery_pct;
-      const isLow = battery !== null && battery !== undefined && battery <= item.low_threshold_pct;
+      const hasBattery = battery !== null && battery !== undefined;
+      const isLow = hasBattery && battery <= item.low_threshold_pct;
+      const isCharging = dev.charging === true;
 
-      const wantSrc = isLow ? item.low_src : item.normal_src;
+      if (isCharging && !s.wasCharging) {
+        s.chargingBaselinePct = hasBattery ? battery : null;
+      } else if (!isCharging) {
+        s.chargingBaselinePct = null;
+      }
+      s.wasCharging = isCharging;
+
+      const isDraining = isCharging && hasBattery && s.chargingBaselinePct !== null
+        && (s.chargingBaselinePct - battery) >= DRAIN_MARGIN_PCT;
+
+      const showWarnPic = item.warn_drain_while_charging && isDraining;
+      const showChargingPic = !showWarnPic && item.show_charging_status && isCharging;
+      const showLowPic = !showWarnPic && !showChargingPic && isLow;
+
+      const wantSrc = showWarnPic ? item.warn_drain_src
+        : showChargingPic ? item.charging_src
+        : showLowPic ? item.low_src : item.normal_src;
+      const wantAnim = showWarnPic ? item.warn_drain_pic_animation
+        : showChargingPic ? item.charging_pic_animation
+        : showLowPic ? item.low_pic_animation : item.normal_pic_animation;
       if (s.pic && s.pic.getAttribute('src') !== wantSrc) s.pic.setAttribute('src', wantSrc);
-      applyPicAnimation(s.pic, isLow ? item.low_pic_animation : item.normal_pic_animation);
-      if (s.pct) s.pct.textContent = (battery === null || battery === undefined) ? '--%' : Math.round(battery) + '%';
-      s.el.classList.toggle('low', isLow);
+      applyPicAnimation(s.pic, wantAnim);
+      if (s.pct) s.pct.textContent = hasBattery ? Math.round(battery) + '%' : '--%';
+      s.el.classList.toggle('low', showLowPic);
+
+      const shouldBeVisible = (isLow || (item.warn_drain_while_charging && isDraining))
+        && !(item.hide_on_charging && isCharging && !isDraining);
 
       if (item.show_mode === 'always') {
         s.el.classList.add('visible');
       } else {
-        if (isLow && !s.shown) {
+        if (shouldBeVisible && !s.shown) {
           s.el.style.display = 'flex';
           void s.el.offsetWidth;
           const enterKey = ENTER_KEYFRAMES[item.enter_animation] || ENTER_KEYFRAMES.pop_bottom;
           s.el.style.animation = `${enterKey} ${ENTER_DUR_MS}ms cubic-bezier(0.34,1.56,0.64,1) forwards`;
           s.shown = true;
           s.nudgeArrival = ++nudgeArrivalCounter;
-        } else if (!isLow && s.shown) {
+        } else if (!shouldBeVisible && s.shown) {
           const exitKey = EXIT_KEYFRAMES[item.exit_animation] || EXIT_KEYFRAMES.fade;
           s.el.style.animation = `${exitKey} ${EXIT_DUR_MS}ms ease forwards`;
           s.shown = false;
@@ -714,6 +767,14 @@ async function poll() {
         s.lastSoundTs = now;
       }
       s.lastLow = isLow;
+
+      if (item.warn_drain_while_charging && isDraining && s.warnAudio
+        && (!s.lastDraining || now - s.lastWarnSoundTs > item.warn_drain_sound_cooldown_sec * 1000)) {
+        s.warnAudio.currentTime = 0;
+        playAlertSound(s.warnAudio);
+        s.lastWarnSoundTs = now;
+      }
+      s.lastDraining = isDraining;
     }
 
     for (const effect of EFFECTS) {
@@ -932,7 +993,11 @@ class _Handler(BaseHTTPRequestHandler):
             if item is None:
                 self.send_error(404, "Unknown item")
                 return
-            rel = {"normal": item.normal_image, "low": item.low_image, "sound": item.sound}.get(kind)
+            rel = {
+                "normal": item.normal_image, "low": item.low_image, "sound": item.sound,
+                "charging": item.charging_image, "warn_drain": item.warn_drain_image,
+                "warn_drain_sound": item.warn_drain_sound,
+            }.get(kind)
             full = config_mod.resolve_media(rel)
             if not full:
                 self.send_error(404, "No media set")

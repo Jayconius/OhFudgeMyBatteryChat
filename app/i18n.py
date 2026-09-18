@@ -264,6 +264,14 @@ STRINGS = {
     "lbl_normal_pic": {"en": "Normal picture:", "de": "Normalbild:", "fr": "Image normale :", "es": "Imagen normal:", "ja": "通常時の画像:", "tlh": "mIw motlh:"},
     "lbl_low_pic": {"en": "Low battery picture:", "de": "Bild bei niedrigem Akku:", "fr": "Image batterie faible :", "es": "Imagen de batería baja:", "ja": "低下時の画像:", "tlh": "mIw HuH mach:"},
     "lbl_warning_sound": {"en": "Warning sound:", "de": "Warnton:", "fr": "Son d'alerte :", "es": "Sonido de aviso:", "ja": "警告音:", "tlh": "ghuH wab:"},
+    "frame_charging": {"en": "Charging", "de": "Laden", "fr": "Charge", "es": "Carga", "ja": "充電", "tlh": "boQ Hal"},
+    "chk_show_charging": {"en": "Show charging status", "de": "Ladestatus anzeigen", "fr": "Afficher l'état de charge", "es": "Mostrar estado de carga", "ja": "充電状態を表示", "tlh": "boQ cha'"},
+    "lbl_charging_pic": {"en": "Charging picture:", "de": "Ladebild:", "fr": "Image de charge :", "es": "Imagen de carga:", "ja": "充電中の画像:", "tlh": "mIw boQ:"},
+    "chk_warn_drain": {"en": "Warn if still losing battery while charging", "de": "Warnen, wenn der Akku trotz Ladens weiter sinkt", "fr": "Avertir si la batterie continue de baisser en charge", "es": "Avisar si la batería sigue bajando mientras carga", "ja": "充電中でもバッテリーが減り続けたら警告", "tlh": "boQtaHvIS HuH puS, ghuH"},
+    "lbl_warn_drain_pic": {"en": "Drain-warning picture:", "de": "Bild für Entladewarnung:", "fr": "Image d'alerte de baisse :", "es": "Imagen de aviso de descarga:", "ja": "消耗警告の画像:", "tlh": "mIw boQHuH:"},
+    "lbl_warn_drain_sound": {"en": "Drain-warning sound:", "de": "Ton für Entladewarnung:", "fr": "Son d'alerte de baisse :", "es": "Sonido de aviso de descarga:", "ja": "消耗警告の音:", "tlh": "wab boQHuH:"},
+    "lbl_warn_drain_cooldown": {"en": "Drain-warning sound cooldown:", "de": "Abklingzeit für Entladewarnton:", "fr": "Délai entre les alertes sonores :", "es": "Tiempo entre avisos sonoros:", "ja": "消耗警告音の間隔:", "tlh": "poH boQHuH:"},
+    "chk_hide_on_charging": {"en": "Hide when charging starts (unless still draining)", "de": "Beim Ladestart ausblenden (außer bei weiterem Verlust)", "fr": "Masquer au début de la charge (sauf si la batterie baisse encore)", "es": "Ocultar al empezar a cargar (salvo que siga bajando)", "ja": "充電開始で非表示（消耗が続く場合を除く）", "tlh": "boQtaHvIS So', 'ach HuH puStaHchugh, So'Qo'"},
 
     # -- Effect dialog ---------------------------------------------------
     "frame_target": {"en": "Target", "de": "Ziel", "fr": "Cible", "es": "Objetivo", "ja": "対象", "tlh": "chov"},

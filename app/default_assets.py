@@ -102,6 +102,47 @@ def _make_low_battery_icon(name: str, color: str) -> str:
     return _save(img, name)
 
 
+def _lightning_bolt(draw: ImageDraw.ImageDraw, cx: int, cy: int, fill: str, scale: float = 1.0):
+    pts = [
+        (cx - 6 * scale, cy - 34 * scale), (cx + 10 * scale, cy - 34 * scale), (cx - 2 * scale, cy - 2 * scale),
+        (cx + 12 * scale, cy - 2 * scale), (cx - 10 * scale, cy + 34 * scale), (cx + 2 * scale, cy + 2 * scale),
+        (cx - 12 * scale, cy + 2 * scale),
+    ]
+    draw.polygon(pts, fill=fill)
+
+
+def _make_charging_icon(name: str, color: str) -> str:
+    """A mostly-full battery with a lightning bolt overlay - shown while a
+    device reports charging, distinct in color from the plain "normal" icon
+    so it reads as its own state, not just a re-skinned default."""
+    img = Image.new("RGBA", (ICON_SIZE, ICON_SIZE), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    cx, cy = ICON_SIZE // 2, ICON_SIZE // 2
+    _battery_glyph(d, cx, cy, color, fraction=0.85)
+    _lightning_bolt(d, cx, cy, "#ffffff", scale=0.55)
+    return _save(img, name)
+
+
+def _make_drain_warning_icon(name: str, color: str) -> str:
+    """A low battery + lightning bolt (still charging) + warning triangle -
+    the "plugged in but still losing charge" state. Deliberately combines
+    the low-battery and charging motifs plus a third warning element so it
+    reads as distinct from either state alone, not a variant of one of them."""
+    img = Image.new("RGBA", (ICON_SIZE, ICON_SIZE), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    cx, cy = ICON_SIZE // 2, ICON_SIZE // 2
+    _battery_glyph(d, cx, cy - 18, color, fraction=0.15)
+    _lightning_bolt(d, cx, cy - 18, color, scale=0.4)
+    # warning triangle beneath, matching the low-battery icon's exclamation placement
+    d.polygon(
+        [(cx, cy + 14), (cx - 22, cy + 50), (cx + 22, cy + 50)],
+        outline=color, width=6,
+    )
+    d.line([(cx, cy + 26), (cx, cy + 38)], fill=color, width=6)
+    d.ellipse([cx - 3, cy + 42, cx + 3, cy + 48], fill=color)
+    return _save(img, name)
+
+
 def _make_beep_wav(name: str) -> str:
     """A short two-tone alert beep, synthesized as raw PCM (no external asset)."""
     path = os.path.join(paths.defaults_dir(), name)
@@ -132,6 +173,8 @@ DEFAULT_NORMAL_ICONS = {
     "Other": ("generic_normal.png", "generic", "#59c2ff"),
 }
 DEFAULT_LOW_ICON = ("low_battery.png", "#ff5c5c")
+DEFAULT_CHARGING_ICON = ("charging.png", "#4caf50")
+DEFAULT_DRAIN_WARNING_ICON = ("drain_warning.png", "#ff9800")
 DEFAULT_BEEP = "warning_beep.wav"
 
 
@@ -148,5 +191,18 @@ def ensure_defaults() -> dict:
     if not os.path.exists(low_full):
         _make_low_battery_icon(low_name, low_color)
     paths_out["_low"] = low_full
+
+    charging_name, charging_color = DEFAULT_CHARGING_ICON
+    charging_full = os.path.join(paths.defaults_dir(), charging_name)
+    if not os.path.exists(charging_full):
+        _make_charging_icon(charging_name, charging_color)
+    paths_out["_charging"] = charging_full
+
+    warn_name, warn_color = DEFAULT_DRAIN_WARNING_ICON
+    warn_full = os.path.join(paths.defaults_dir(), warn_name)
+    if not os.path.exists(warn_full):
+        _make_drain_warning_icon(warn_name, warn_color)
+    paths_out["_warn_drain"] = warn_full
+
     paths_out["_beep"] = _make_beep_wav(DEFAULT_BEEP)
     return paths_out

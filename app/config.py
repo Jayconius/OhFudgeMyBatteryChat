@@ -105,6 +105,30 @@ class OverlayItem:
     nudge_group_id: Optional[str] = None  # if set, position/direction/spacing come from that NudgeGroup
     text_gap_px: int = 4  # vertical gap between the picture and Label/Battery % text
 
+    # Charging status (independent of show_mode - applies to both Always
+    # Visible and Hidden until low)
+    show_charging_status: bool = False
+    charging_image: Optional[str] = None
+    charging_pic_animation: str = "none"
+    # "Still losing battery despite being on charge" warning (e.g. a wireless
+    # headset draining faster than a weak charger can replace) - detected by
+    # comparing the current battery_pct against whatever it was the moment
+    # charging most recently started, not a continuous trend (SteamVR's
+    # battery reporting updates in bursts, not smoothly, so a fixed
+    # reference point is far less jittery than comparing consecutive polls).
+    # Independent of show_charging_status - fires on its own even if the
+    # plain charging picture was never set up.
+    warn_drain_while_charging: bool = False
+    warn_drain_image: Optional[str] = None
+    warn_drain_pic_animation: str = "none"
+    warn_drain_sound: Optional[str] = None
+    warn_drain_sound_cooldown_sec: int = 300
+    # Only meaningful when show_mode == "low_only" - Always Visible items
+    # have nothing to hide. When the drain warning above is currently
+    # active, this is ignored (the item stays visible/alerting) even if
+    # charging is reported true - re-hiding would be actively misleading.
+    hide_on_charging: bool = False
+
     # Label text styling (only rendered when show_label is True)
     label_font_family: str = "Segoe UI"
     label_font_size_px: int = 15
@@ -280,8 +304,9 @@ new_group_id = new_item_id
 def import_media(item_id: str, source_path: str, kind: str) -> str:
     """Copy a user-picked file into this item's app-data folder.
 
-    kind is "normal", "low", or "sound" and is used as the base filename so
-    re-importing overwrites the previous file cleanly.
+    kind (e.g. "normal", "low", "sound", "charging", "warn_drain",
+    "warn_drain_sound") is used as the base filename so re-importing
+    overwrites the previous file cleanly.
     Returns a path relative to the app-data root (portable, stored in config).
     """
     if not source_path:
