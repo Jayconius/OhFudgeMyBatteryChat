@@ -2,7 +2,7 @@
 
 # Oh Fudge, My Battery Chat!
 
-[![Version](https://img.shields.io/badge/version-v1.2.0-blue)](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/v1.2.0)
+[![Version](https://img.shields.io/badge/version-v1.3.0-blue)](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/v1.3.0)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D6)](#)
 [![Requires](https://img.shields.io/badge/requires-SteamVR-orange)](#)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
@@ -126,7 +126,7 @@
 
 ヘッドセットを装着せずにクリップの録画やスクリーンショットの撮影、
 デバイス/エフェクトの設定を試したい場合は、単体の
-[デモシミュレーター](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/simulator-v1.0.0)
+[デモシミュレーター](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/simulator-v2.0.0)
 を入手してください。
 
 1. `OhFudgeMyBatteryChatSimulator.exe`を`OhFudgeMyBatteryChat.exe`と
@@ -160,7 +160,7 @@
 - 何かを追加/編集/削除するとOBSブラウザソースが自動的に同期 - 手動更新は
   不要
 - SteamVRなしでテスト/録画できる単体の
-  [デモシミュレーター](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/simulator-v1.0.0)
+  [デモシミュレーター](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/simulator-v2.0.0)
 - 起動時の新バージョン確認（任意、デフォルトは無効）
 - 英語、ドイツ語、フランス語、スペイン語、日本語、クリンゴン語に対応
 

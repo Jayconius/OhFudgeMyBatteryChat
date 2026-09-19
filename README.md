@@ -2,7 +2,7 @@
 
 # Oh Fudge, My Battery Chat!
 
-[![Version](https://img.shields.io/badge/version-v1.2.0-blue)](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/v1.2.0)
+[![Version](https://img.shields.io/badge/version-v1.3.0-blue)](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/v1.3.0)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D6)](#)
 [![Requires](https://img.shields.io/badge/requires-SteamVR-orange)](#)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
@@ -118,7 +118,7 @@ of current page."
 <details>
 <summary><strong>Testing without SteamVR (the Demo Simulator)</strong></summary>
 
-Grab the standalone [Demo Simulator](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/simulator-v1.0.0)
+Grab the standalone [Demo Simulator](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/simulator-v2.0.0)
 if you want to record clips, take screenshots, or just try out Device/Effect
 setups without a headset on.
 
@@ -148,7 +148,7 @@ setups without a headset on.
   in About)
 - The OBS Browser Source stays in sync automatically when you add/edit/
   remove something - no manual refresh needed
-- A standalone [Demo Simulator](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/simulator-v1.0.0)
+- A standalone [Demo Simulator](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/simulator-v2.0.0)
   for testing/recording without SteamVR running
 - Optional startup check for new releases, off by default
 - Runs in English, Deutsch, Français, Español, 日本語, and Klingon

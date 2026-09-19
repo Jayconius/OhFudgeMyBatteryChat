@@ -2,7 +2,7 @@
 
 # Oh Fudge, My Battery Chat!
 
-[![Version](https://img.shields.io/badge/version-v1.2.0-blue)](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/v1.2.0)
+[![Version](https://img.shields.io/badge/version-v1.3.0-blue)](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/v1.3.0)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D6)](#)
 [![Requires](https://img.shields.io/badge/requires-SteamVR-orange)](#)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
@@ -138,7 +138,7 @@ para "Actualizar caché de la página actual".
 <details>
 <summary><strong>Probar sin SteamVR (el Simulador de demostración)</strong></summary>
 
-Consigue el [Simulador de demostración](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/simulator-v1.0.0)
+Consigue el [Simulador de demostración](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/simulator-v2.0.0)
 independiente si quieres grabar clips, hacer capturas de pantalla, o
 simplemente probar configuraciones de Dispositivos/Efectos sin ponerte el
 casco.
@@ -179,7 +179,7 @@ casco.
 - La fuente de navegador de OBS se mantiene sincronizada automáticamente
   al añadir/editar/eliminar algo - sin necesidad de actualizar
   manualmente
-- Un [Simulador de demostración](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/simulator-v1.0.0)
+- Un [Simulador de demostración](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/simulator-v2.0.0)
   independiente para probar/grabar sin SteamVR en ejecución
 - Comprobación opcional de nuevas versiones al iniciar, desactivada por
   defecto
