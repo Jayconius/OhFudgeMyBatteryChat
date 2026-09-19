@@ -2,7 +2,7 @@
 
 # Oh Fudge, My Battery Chat!
 
-[![Version](https://img.shields.io/badge/version-v1.3.0-blue)](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/v1.3.0)
+[![Version](https://img.shields.io/badge/version-v1.3.1-blue)](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/v1.3.1)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D6)](#)
 [![Requires](https://img.shields.io/badge/requires-SteamVR-orange)](#)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
@@ -133,6 +133,33 @@ setups without a headset on.
 
 </details>
 
+<details>
+<summary><strong>Mute macros and the Oh Fudge VR Macro App (New, Experimental)</strong></summary>
+
+1. Click **Macros** (top right), then **Add**: pick a microphone (an
+   **Audio Device**), what the macro does (mute, unmute or toggle) and,
+   optionally, a **global hotkey** such as `CTRL+SHIFT+NUM5` - it works while
+   a game has focus and while the app is in the tray.
+2. For big on-screen buttons, click **Open Oh Fudge VR Macro App** in the
+   same window. If it isn't in the app's folder yet, the app offers to
+   download it from its [GitHub release](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/macros-v1.0.0) - only after you click Yes,
+   and it's only kept if its checksum matches the one GitHub publishes. Or
+   download it yourself and drop `OhFudgeVRMacroApp.exe` in the **same
+   folder** as `OhFudgeMyBatteryChat.exe`.
+3. It shows one button per macro (**LIVE**, **MUTED** or **OFFLINE**). It
+   starts locked, so nothing moves by accident. **Right-click > Edit layout**
+   lets you drag and resize buttons, change their colors, resize the window
+   and more - click **Done** to lock it again.
+4. Pin the window in VR with a desktop overlay such as XSOverlay, OVR Toolkit
+   or Desktop+. It never takes focus from your game. Prefer a browser? The
+   same buttons are at `http://127.0.0.1:8710/macros` (use your own port).
+
+Macros change the Windows mute setting. A wireless mic's own hardware mute
+button usually can't be seen by Windows, so use a macro (or Windows' own
+mute) if you want the **Mic Muted** trigger to react.
+
+</details>
+
 ## Features
 
 - Live battery % for any SteamVR device, with a low-battery pop-in alert
@@ -151,13 +178,25 @@ setups without a headset on.
 - A standalone [Demo Simulator](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/simulator-v2.0.0)
   for testing/recording without SteamVR running
 - Optional startup check for new releases, off by default
+- **Twitch chat commands** - let chat fire an alert with a command like
+  `!battery`, limited to everyone, VIPs or moderators (optional - you link
+  your account on Twitch's own approval page)
+- **Sync Groups** - Devices that appear together as a set once every member
+  is ready
+- **New (Experimental):** Audio Device effects for a wireless mic
+  (connected, disconnected, muted, talking, silent) and mute macros with
+  global hotkeys
+- **New (Experimental):** the standalone
+  [Oh Fudge VR Macro App](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/macros-v1.0.0) - your mute buttons in a small
+  borderless window you can pin in VR
 - Runs in English, Deutsch, Français, Español, 日本語, and Klingon
 
 ## Building from source
 
 ```bash
 pip install -r requirements.txt
-pyinstaller --onefile --windowed --name "OhFudgeMyBatteryChat" --collect-all openvr --add-data "app/fonts;fonts" --add-data "assets;device_icons" main.py
+pyinstaller --onefile --windowed --name "OhFudgeMyBatteryChat" --collect-all openvr --collect-all pycaw --collect-all comtypes --add-data "app/fonts;fonts" --add-data "assets;device_icons" main.py
+pyinstaller --onefile --windowed --name "OhFudgeVRMacroApp" tools/vr_macro_app.py
 ```
 
 ## License

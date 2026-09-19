@@ -2,7 +2,7 @@
 
 # Oh Fudge, My Battery Chat!
 
-[![Version](https://img.shields.io/badge/version-v1.3.0-blue)](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/v1.3.0)
+[![Version](https://img.shields.io/badge/version-v1.3.1-blue)](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/v1.3.1)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D6)](#)
 [![Requires](https://img.shields.io/badge/requires-SteamVR-orange)](#)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
@@ -151,6 +151,39 @@ Konfigurationen ausprobieren möchtest, ohne ein Headset aufzusetzen.
 
 </details>
 
+<details>
+<summary><strong>Stummschalt-Makros und die Oh Fudge VR Macro App (Neu, experimentell)</strong></summary>
+
+1. Klicke oben rechts auf **Makros**, dann auf **Hinzufügen**: wähle ein
+   Mikrofon (ein **Audiogerät**), was das Makro tut (stummschalten, Ton
+   einschalten oder umschalten) und optional ein **globales Tastenkürzel**
+   wie `STRG+UMSCHALT+NUM5` - es funktioniert, auch wenn ein Spiel im
+   Vordergrund ist oder die App im Infobereich läuft.
+2. Für große Schaltflächen auf dem Bildschirm klicke im selben Fenster auf
+   **Oh Fudge VR Macro App öffnen**. Liegt sie noch nicht im Ordner der App,
+   bietet die App an, sie aus dem [GitHub-Release](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/macros-v1.0.0) herunterzuladen -
+   erst nachdem du auf Ja geklickt hast, und sie wird nur behalten, wenn ihre
+   Prüfsumme mit der von GitHub veröffentlichten übereinstimmt. Oder lade sie
+   selbst herunter und lege `OhFudgeVRMacroApp.exe` in **denselben Ordner**
+   wie `OhFudgeMyBatteryChat.exe`.
+3. Sie zeigt pro Makro eine Schaltfläche (**LIVE**, **MUTED** oder
+   **OFFLINE**). Zunächst ist sie gesperrt, damit nichts versehentlich
+   verschoben wird. **Rechtsklick > Edit layout** (Bearbeiten-Modus) erlaubt es,
+   Schaltflächen zu verschieben und zu skalieren, Farben zu ändern, die
+   Fenstergröße anzupassen und mehr - mit **Done** sperrst du sie wieder
+   (die Menüs der App sind auf Englisch).
+4. Hefte das Fenster in VR mit einem Desktop-Overlay wie XSOverlay, OVR
+   Toolkit oder Desktop+ an. Es nimmt deinem Spiel nie den Fokus. Lieber
+   einen Browser? Dieselben Schaltflächen gibt es unter
+   `http://127.0.0.1:8710/macros` (mit deinem eigenen Port).
+
+Makros ändern die Windows-Stummschaltung. Die Stummschalttaste eines
+Funkmikrofons selbst kann Windows meist nicht erkennen - nutze ein Makro
+(oder die Windows-Stummschaltung), wenn der Auslöser **Mikro stumm**
+reagieren soll.
+
+</details>
+
 ## Funktionen
 
 - Live-Akkustand in % für jedes SteamVR-Gerät, mit Einblend-Warnung bei
@@ -171,6 +204,17 @@ Konfigurationen ausprobieren möchtest, ohne ein Headset aufzusetzen.
 - Ein eigenständiger [Demo-Simulator](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/simulator-v2.0.0)
   zum Testen/Aufnehmen ohne laufendes SteamVR
 - Optionale Update-Prüfung beim Start, standardmäßig deaktiviert
+- **Twitch-Chat-Befehle** - lass den Chat eine Warnung mit einem Befehl wie
+  `!battery` auslösen, beschränkt auf alle, VIPs oder Moderatoren (optional -
+  du verknüpfst dein Konto auf der eigenen Twitch-Freigabeseite)
+- **Sync-Gruppen** - Geräte, die gemeinsam als Set erscheinen, sobald alle
+  bereit sind
+- **Neu (experimentell):** Audiogerät-Effekte für ein Funkmikrofon
+  (verbunden, getrennt, stumm, spricht, still) und Stummschalt-Makros mit
+  globalen Tastenkürzeln
+- **Neu (experimentell):** die eigenständige
+  [Oh Fudge VR Macro App](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/macros-v1.0.0) - deine Stummschalt-Schaltflächen in einem
+  kleinen rahmenlosen Fenster, das du in VR anheften kannst
 - Läuft auf Englisch, Deutsch, Französisch, Spanisch, Japanisch und
   Klingonisch
 
@@ -178,7 +222,8 @@ Konfigurationen ausprobieren möchtest, ohne ein Headset aufzusetzen.
 
 ```bash
 pip install -r requirements.txt
-pyinstaller --onefile --windowed --name "OhFudgeMyBatteryChat" --collect-all openvr --add-data "app/fonts;fonts" --add-data "assets;device_icons" main.py
+pyinstaller --onefile --windowed --name "OhFudgeMyBatteryChat" --collect-all openvr --collect-all pycaw --collect-all comtypes --add-data "app/fonts;fonts" --add-data "assets;device_icons" main.py
+pyinstaller --onefile --windowed --name "OhFudgeVRMacroApp" tools/vr_macro_app.py
 ```
 
 ## Lizenz

@@ -2,7 +2,7 @@
 
 # Oh Fudge, My Battery Chat!
 
-[![Version](https://img.shields.io/badge/version-v1.3.0-blue)](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/v1.3.0)
+[![Version](https://img.shields.io/badge/version-v1.3.1-blue)](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/v1.3.1)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D6)](#)
 [![Requires](https://img.shields.io/badge/requires-SteamVR-orange)](#)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
@@ -157,6 +157,36 @@ casco.
 
 </details>
 
+<details>
+<summary><strong>Macros de silencio y Oh Fudge VR Macro App (Nuevo, experimental)</strong></summary>
+
+1. Haz clic en **Macros** (arriba a la derecha) y luego en **Añadir**: elige
+   un micrófono (un **dispositivo de audio**), qué hace la macro (silenciar,
+   activar o alternar) y, si quieres, un **atajo global** como
+   `CTRL+MAYÚS+NUM5` - funciona aunque un juego tenga el foco o la aplicación
+   esté en la bandeja del sistema.
+2. Para botones grandes en pantalla, haz clic en **Abrir Oh Fudge VR Macro
+   App** en la misma ventana. Si aún no está en la carpeta de la aplicación,
+   esta ofrece descargarla desde su [versión de GitHub](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/macros-v1.0.0) - solo después
+   de que pulses Sí, y solo se conserva si su suma de verificación coincide
+   con la que publica GitHub. O descárgala tú y pon `OhFudgeVRMacroApp.exe`
+   en la **misma carpeta** que `OhFudgeMyBatteryChat.exe`.
+3. Muestra un botón por macro (**LIVE**, **MUTED** u **OFFLINE**). Empieza
+   bloqueada para que nada se mueva por accidente. **Clic derecho > Edit
+   layout** (modo edición) permite arrastrar y cambiar el tamaño de los botones,
+   cambiar sus colores, redimensionar la ventana y más - pulsa **Done** para
+   bloquearla de nuevo (los menús de la aplicación están en inglés).
+4. Ancla la ventana en VR con una superposición de escritorio como XSOverlay,
+   OVR Toolkit o Desktop+. Nunca le quita el foco a tu juego. ¿Prefieres un
+   navegador? Los mismos botones están en `http://127.0.0.1:8710/macros`
+   (con tu propio puerto).
+
+Las macros cambian el ajuste de silencio de Windows. El botón de silencio de
+un micrófono inalámbrico normalmente no lo ve Windows: usa una macro (o el
+silencio de Windows) para que el disparador **Micrófono silenciado** reaccione.
+
+</details>
+
 ## Características
 
 - Porcentaje de batería en directo para cualquier dispositivo SteamVR,
@@ -183,13 +213,25 @@ casco.
   independiente para probar/grabar sin SteamVR en ejecución
 - Comprobación opcional de nuevas versiones al iniciar, desactivada por
   defecto
+- **Comandos del chat de Twitch** - deja que el chat dispare una alerta con
+  un comando como `!battery`, limitado a todos, VIP o moderadores (opcional -
+  vinculas tu cuenta en la página de autorización de Twitch)
+- **Grupos de sincronización** - dispositivos que aparecen juntos, como un
+  conjunto, cuando todos están listos
+- **Nuevo (experimental):** efectos para un dispositivo de audio (micrófono
+  inalámbrico conectado, desconectado, silenciado, hablando, en silencio) y
+  macros de silencio con atajos globales
+- **Nuevo (experimental):** la aplicación independiente
+  [Oh Fudge VR Macro App](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/macros-v1.0.0) - tus botones de silencio en una pequeña
+  ventana sin bordes que puedes anclar en VR
 - Funciona en inglés, alemán, francés, español, japonés y klingon
 
 ## Compilar desde el código fuente
 
 ```bash
 pip install -r requirements.txt
-pyinstaller --onefile --windowed --name "OhFudgeMyBatteryChat" --collect-all openvr --add-data "app/fonts;fonts" --add-data "assets;device_icons" main.py
+pyinstaller --onefile --windowed --name "OhFudgeMyBatteryChat" --collect-all openvr --collect-all pycaw --collect-all comtypes --add-data "app/fonts;fonts" --add-data "assets;device_icons" main.py
+pyinstaller --onefile --windowed --name "OhFudgeVRMacroApp" tools/vr_macro_app.py
 ```
 
 ## Licencia

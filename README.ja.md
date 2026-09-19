@@ -2,7 +2,7 @@
 
 # Oh Fudge, My Battery Chat!
 
-[![Version](https://img.shields.io/badge/version-v1.3.0-blue)](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/v1.3.0)
+[![Version](https://img.shields.io/badge/version-v1.3.1-blue)](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/v1.3.1)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D6)](#)
 [![Requires](https://img.shields.io/badge/requires-SteamVR-orange)](#)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
@@ -142,6 +142,30 @@
 
 </details>
 
+<details>
+<summary><strong>ミュートマクロと Oh Fudge VR Macro App（新機能・実験的）</strong></summary>
+
+1. 右上の **マクロ** をクリックし、**追加** を選びます。マイク（**オーディオデバイス**）、
+   マクロの動作（ミュート・ミュート解除・切り替え）、必要なら
+   `CTRL+SHIFT+NUM5` のような **グローバルホットキー** を設定します。ゲームがアクティブでも、
+   アプリがタスクトレイにあっても動作します。
+2. 画面上の大きなボタンを使うには、同じウィンドウの **Oh Fudge VR Macro Appを開く** をクリックします。
+   アプリのフォルダーにまだない場合は、[GitHubのリリース](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/macros-v1.0.0) からダウンロードするか確認されます
+   （「はい」を押した場合のみ。GitHubが公開しているチェックサムと一致した場合だけ保存されます）。
+   自分でダウンロードして、`OhFudgeVRMacroApp.exe` を `OhFudgeMyBatteryChat.exe` と **同じフォルダー** に置いてもかまいません。
+3. マクロごとに1つのボタンが表示されます（**LIVE**、**MUTED**、**OFFLINE**）。
+   最初はロックされていて、誤って動かすことはありません。**右クリック > Edit layout**（編集モード）で、
+   ボタンの移動・サイズ変更、色の変更、ウィンドウのサイズ変更などができます。
+   終わったら **Done** でロックします（アプリのメニューは英語です）。
+4. XSOverlay、OVR Toolkit、Desktop+ などのデスクトップオーバーレイでVR内に固定できます。
+   ゲームのフォーカスを奪うことはありません。ブラウザが良い場合は、同じボタンが
+   `http://127.0.0.1:8710/macros`（ポート番号はご自身のもの）にもあります。
+
+マクロはWindowsのミュート設定を変更します。ワイヤレスマイク本体のミュートボタンは通常Windowsから見えないため、
+**マイクミュート** のトリガーを反応させたい場合はマクロ（またはWindowsのミュート）を使ってください。
+
+</details>
+
 ## 機能
 
 - 任意のSteamVRデバイスのバッテリー%をリアルタイム表示し、低下時には
@@ -162,13 +186,21 @@
 - SteamVRなしでテスト/録画できる単体の
   [デモシミュレーター](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/simulator-v2.0.0)
 - 起動時の新バージョン確認（任意、デフォルトは無効）
+- **Twitchチャットコマンド** - `!battery` のようなコマンドでチャットから通知を発動できます
+  （全員/VIP/モデレーターに限定可能。任意機能で、アカウント連携はTwitch自身の承認ページで行います）
+- **同期グループ** - すべてのメンバーの準備ができたら、デバイスがセットとして一緒に表示されます
+- **新機能（実験的）：** ワイヤレスマイク向けのオーディオデバイス効果
+  （接続・切断・ミュート・発話・無音）と、グローバルホットキー付きのミュートマクロ
+- **新機能（実験的）：** 単体の
+  [Oh Fudge VR Macro App](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/macros-v1.0.0) - ミュートボタンを小さな枠なしウィンドウに表示し、VR内に固定できます
 - 英語、ドイツ語、フランス語、スペイン語、日本語、クリンゴン語に対応
 
 ## ソースからのビルド
 
 ```bash
 pip install -r requirements.txt
-pyinstaller --onefile --windowed --name "OhFudgeMyBatteryChat" --collect-all openvr --add-data "app/fonts;fonts" --add-data "assets;device_icons" main.py
+pyinstaller --onefile --windowed --name "OhFudgeMyBatteryChat" --collect-all openvr --collect-all pycaw --collect-all comtypes --add-data "app/fonts;fonts" --add-data "assets;device_icons" main.py
+pyinstaller --onefile --windowed --name "OhFudgeVRMacroApp" tools/vr_macro_app.py
 ```
 
 ## ライセンス
