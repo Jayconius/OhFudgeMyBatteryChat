@@ -17,6 +17,11 @@ def _exe_dir() -> str:
     return os.path.dirname(os.path.abspath(sys.argv[0]))
 
 
+def program_dir() -> str:
+    """Folder the program itself lives in (where sibling tools are looked for)."""
+    return _exe_dir()
+
+
 def _appdata_fallback() -> str:
     base = os.environ.get("APPDATA") or os.path.expanduser("~")
     return os.path.join(base, APP_DIR_NAME)

@@ -22,6 +22,7 @@ from types import SimpleNamespace
 
 from . import audio_monitor as audio_mod
 from . import bundled_icons
+from . import companion
 from . import config as config_mod
 from . import default_assets
 from . import hotkeys
@@ -34,6 +35,7 @@ from . import update_check
 from .audio_monitor import AudioMonitor
 from .hotkeys import HotkeyManager
 from .server import ServerController
+from .single_instance import SingleInstance
 from .twitch_monitor import TwitchMonitor
 from .vr_monitor import VRMonitor
 
@@ -817,6 +819,12 @@ class MacrosDialog(tk.Toplevel):
         ttk.Button(url_row, text=i18n.t_piqad("btn_open_browser"), command=lambda: webbrowser.open(self.url_var.get())).pack(side="left", padx=4)
         ttk.Label(frm, text=i18n.t_piqad("hint_macro_page"), foreground="#666", wraplength=560, justify="left").pack(anchor="w", pady=(6, 0))
 
+        ttk.Separator(frm, orient="horizontal").pack(fill="x", pady=10)
+        comp_row = ttk.Frame(frm)
+        comp_row.pack(fill="x")
+        ttk.Button(comp_row, text=i18n.t_piqad("btn_open_companion"), command=self._open_companion).pack(side="left")
+        ttk.Label(frm, text=i18n.t_piqad("hint_companion"), foreground="#666", wraplength=560, justify="left").pack(anchor="w", pady=(6, 0))
+
         ttk.Button(frm, text=i18n.t_piqad("about_close"), command=self.destroy).pack(anchor="e", pady=(10, 0))
 
         self._refresh()
@@ -891,6 +899,86 @@ class MacrosDialog(tk.Toplevel):
     def _copy_url(self):
         self.clipboard_clear()
         self.clipboard_append(self.url_var.get())
+
+    def _open_companion(self):
+        title = i18n.t("dlg_title_companion")
+        if not companion.is_available():
+            # Only ever downloads after an explicit Yes - and only this one file.
+            if not messagebox.askyesno(title, i18n.t("msg_companion_missing_fmt").format(name=companion.EXE_NAME), parent=self):
+                return
+            dlg = CompanionDownloadDialog(self)
+            self.wait_window(dlg)
+            if dlg.error is not None:
+                if dlg.error.code != "cancelled":
+                    detail = f"\n\n{dlg.error.detail}" if dlg.error.detail and dlg.error.code in ("network", "write") else ""
+                    if messagebox.askyesno(title, i18n.t(f"companion_err_{dlg.error.code}") + detail + "\n\n" + i18n.t("msg_companion_open_releases"),
+                                           icon="warning", parent=self):
+                        webbrowser.open(companion.RELEASES_PAGE)
+                return
+        try:
+            companion.launch()
+        except OSError as e:
+            messagebox.showwarning(title, i18n.t("msg_companion_launch_failed_fmt").format(error=e), parent=self)
+
+
+class CompanionDownloadDialog(tk.Toplevel):
+    """Progress window for downloading the Oh Fudge VR Macro App. Closes itself when
+    done; .error is None on success, else the CompanionError (code
+    "cancelled" if the user cancelled)."""
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.withdraw()
+        self.error = None
+        self._cancel = threading.Event()
+        self._progress = (0, 0)
+        self._result = None  # ("ok",) or ("error", CompanionError)
+        self.title(i18n.t("dlg_title_companion"))
+        self.resizable(False, False)
+        theme.apply_window_theme(self, getattr(parent.main, "dark_mode", False))
+        frm = ttk.Frame(self)
+        frm.pack(padx=18, pady=14)
+        ttk.Label(frm, text=i18n.t("msg_companion_downloading")).pack(anchor="w")
+        self.bar = ttk.Progressbar(frm, length=320, mode="indeterminate")
+        self.bar.pack(pady=(10, 4))
+        self.bar.start(15)
+        self.status_var = tk.StringVar(value="")
+        ttk.Label(frm, textvariable=self.status_var, foreground="#666").pack(anchor="w")
+        ttk.Button(frm, text=i18n.t_piqad("btn_cancel"), command=self._on_cancel).pack(anchor="e", pady=(10, 0))
+        self.protocol("WM_DELETE_WINDOW", self._on_cancel)
+        self.grab_set()
+        self.transient(parent)
+        place_dialog(self)
+        self.deiconify()
+        threading.Thread(target=self._work, daemon=True).start()
+        self.after(100, self._poll)
+
+    def _on_cancel(self):
+        self._cancel.set()
+
+    def _work(self):
+        try:
+            companion.download_and_install(lambda done, total: setattr(self, "_progress", (done, total)), self._cancel.is_set)
+            self._result = ("ok",)
+        except companion.CompanionError as e:
+            self._result = ("error", e)
+        except Exception as e:  # never leave the dialog hanging on something unexpected
+            self._result = ("error", companion.CompanionError("network", str(e)))
+
+    def _poll(self):
+        if self._result is not None:
+            if self._result[0] == "error":
+                self.error = self._result[1]
+            self.destroy()
+            return
+        done, total = self._progress
+        if total:
+            if str(self.bar["mode"]) != "determinate":
+                self.bar.stop()
+                self.bar.configure(mode="determinate", maximum=total)
+            self.bar["value"] = done
+            self.status_var.set(i18n.t("companion_progress_fmt").format(done=done / 1048576, total=total / 1048576))
+        self.after(100, self._poll)
 
 
 class DeviceSelectorMixin:
@@ -2979,6 +3067,13 @@ class MainWindow(tk.Tk):
         self.lift()
         self.focus_force()
 
+    def _bring_to_front(self):
+        """Another launch of the app asked this copy to come forward -
+        restores it from the tray or the taskbar and puts it on top."""
+        self._show_from_tray()
+        self.attributes("-topmost", True)
+        self.after(300, lambda: self.attributes("-topmost", False))
+
     def _on_tray_exit(self, icon=None, item=None):
         self.after(0, self._exit_app)
 
@@ -2995,5 +3090,18 @@ class MainWindow(tk.Tk):
 
 
 def main():
+    instance = SingleInstance()
+    if not instance.acquire():
+        if not instance.signalled:
+            # The running copy couldn't be reached to raise itself - say so
+            # instead of just exiting with no explanation.
+            import ctypes
+            ctypes.windll.user32.MessageBoxW(
+                None, f"{APP_TITLE} is already running.\n\nLook for it in the system tray or the taskbar.",
+                APP_TITLE, 0x40,  # MB_ICONINFORMATION
+            )
+        return
     app = MainWindow()
+    instance.start_listening(lambda: app.after(0, app._bring_to_front))
     app.mainloop()
+    instance.release()
