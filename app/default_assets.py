@@ -68,10 +68,27 @@ def _make_class_icon(name: str, shape: str, color: str) -> str:
         ]
         d.polygon(points, outline=color, width=7)
         d.ellipse([cx - 9, cy - 9, cx + 9, cy + 9], outline=color, width=5)
+    elif shape == "microphone":
+        _microphone_glyph(d, color)
     else:  # generic
         d.ellipse([20, 20, 108, 108], outline=color, width=7)
         _battery_glyph(d, cx, cy, color, fraction=0.8)
 
+    return _save(img, name)
+
+
+def _microphone_glyph(draw: ImageDraw.ImageDraw, color: str):
+    draw.rounded_rectangle([46, 14, 82, 70], radius=18, outline=color, width=7)   # capsule
+    draw.arc([32, 40, 96, 100], start=0, end=180, fill=color, width=6)             # cradle
+    draw.line([(64, 100), (64, 116)], fill=color, width=6)                         # stem
+    draw.line([(44, 116), (84, 116)], fill=color, width=6)                         # base
+
+
+def _make_mic_muted_icon(name: str, color: str) -> str:
+    img = Image.new("RGBA", (ICON_SIZE, ICON_SIZE), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    _microphone_glyph(d, color)
+    d.line([(24, 20), (104, 108)], fill=color, width=9)  # slash across it
     return _save(img, name)
 
 
@@ -170,8 +187,10 @@ DEFAULT_NORMAL_ICONS = {
     "GenericTracker": ("tracker_normal.png", "tracker", "#59c2ff"),
     "TrackingReference": ("base_station_normal.png", "base_station", "#59c2ff"),
     "Service": ("service_normal.png", "service", "#59c2ff"),
+    "Microphone": ("microphone_normal.png", "microphone", "#59c2ff"),
     "Other": ("generic_normal.png", "generic", "#59c2ff"),
 }
+DEFAULT_MIC_MUTED_ICON = ("microphone_muted.png", "#ff5c5c")
 DEFAULT_LOW_ICON = ("low_battery.png", "#ff5c5c")
 DEFAULT_CHARGING_ICON = ("charging.png", "#4caf50")
 DEFAULT_DRAIN_WARNING_ICON = ("drain_warning.png", "#ff9800")
@@ -186,6 +205,12 @@ def ensure_defaults() -> dict:
         if not os.path.exists(full):
             _make_class_icon(fname, shape, color)
         paths_out[device_class] = full
+    muted_name, muted_color = DEFAULT_MIC_MUTED_ICON
+    muted_full = os.path.join(paths.defaults_dir(), muted_name)
+    if not os.path.exists(muted_full):
+        _make_mic_muted_icon(muted_name, muted_color)
+    paths_out["_mic_muted"] = muted_full
+
     low_name, low_color = DEFAULT_LOW_ICON
     low_full = os.path.join(paths.defaults_dir(), low_name)
     if not os.path.exists(low_full):

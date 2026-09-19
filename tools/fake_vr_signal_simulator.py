@@ -43,11 +43,20 @@ from app import paths as paths_mod
 from app import theme as theme_mod
 from app.device_ids import STEAMVR_SERVICE_SERIAL
 
-APP_TITLE = "Oh Fudge - Fake SteamVR Signal Simulator"
+FAKE_MICS = [
+    ("SIM-MIC-1", "Simulated Wireless Mic"),
+    ("SIM-MIC-2", "Simulated XLR Mic"),
+]
+
+SIMULATOR_VERSION = "2.0.0"  # its own version line (release tags are simulator-vX.Y.Z), independent of the main app's
+APP_TITLE = f"Oh Fudge - Fake SteamVR Signal Simulator v{SIMULATOR_VERSION}"
 HEARTBEAT_MS = 1000  # must be well under vr_monitor.FAKE_SIGNAL_MAX_AGE_SEC
 
 # Device classes with no battery to report - just a Connected toggle.
 NO_BATTERY_CLASSES = ("TrackingReference", "Service")
+# Classes OpenVR reports a tracking result for - matches vr_monitor.py's
+# real-hardware poll (base stations/Service aren't tracked objects).
+TRACKED_CLASSES = ("HMD", "Controller", "GenericTracker")
 
 PLACEHOLDER_DEVICES = [
     # (serial, device_class, model, role)
@@ -89,6 +98,8 @@ class SimulatorApp(tk.Tk):
         self.battery_vars = {}   # serial -> IntVar
         self.connected_vars = {}  # serial -> BooleanVar
         self.charging_vars = {}  # serial -> BooleanVar (battery-having devices only)
+        self.tracking_vars = {}  # serial -> BooleanVar (TRACKED_CLASSES only)
+        self.hmd_active_vars = {}  # serial -> BooleanVar (HMD only)
 
         ttk.Label(self, text="Fake SteamVR Signal Simulator", font=("Segoe UI", 11, "bold")).grid(
             row=0, column=0, columnspan=4, padx=10, pady=(10, 2), sticky="w"
@@ -135,6 +146,37 @@ class SimulatorApp(tk.Tk):
                 row=i, column=3, padx=(4, 10), pady=4
             )
 
+            if device_class in TRACKED_CLASSES:
+                tracking_var = tk.BooleanVar(value=True)
+                self.tracking_vars[serial] = tracking_var
+                ttk.Checkbutton(self, text="Tracking OK", variable=tracking_var).grid(
+                    row=i, column=5, padx=(4, 10), pady=4
+                )
+
+            if device_class == "HMD":
+                hmd_active_var = tk.BooleanVar(value=True)
+                self.hmd_active_vars[serial] = hmd_active_var
+                ttk.Checkbutton(self, text="Worn", variable=hmd_active_var).grid(
+                    row=i, column=6, padx=(4, 10), pady=4
+                )
+
+        # Fake microphones, for trying Audio Device Effects and the mute
+        # macros without any real hardware - they show up in the app's
+        # microphone picker (tagged "simulator") while this window is open.
+        self.mic_vars = {}  # mic id -> {"connected": Var, "muted": Var, "talking": Var}
+        first_mic_row = 2 + len(devices)
+        ttk.Separator(self, orient="horizontal").grid(row=first_mic_row, column=0, columnspan=7, sticky="ew", padx=10, pady=6)
+        ttk.Label(self, text="Fake microphones (Audio Device Effects / mute macros)", font=("Segoe UI", 9, "bold")).grid(
+            row=first_mic_row + 1, column=0, columnspan=7, padx=10, sticky="w"
+        )
+        for j, (mic_id, mic_name) in enumerate(FAKE_MICS, start=first_mic_row + 2):
+            ttk.Label(self, text=mic_name, width=32).grid(row=j, column=0, padx=(10, 4), pady=4, sticky="w")
+            vars_ = {"connected": tk.BooleanVar(value=True), "muted": tk.BooleanVar(value=False), "talking": tk.BooleanVar(value=False)}
+            self.mic_vars[mic_id] = vars_
+            ttk.Checkbutton(self, text="Connected", variable=vars_["connected"], command=self._write_signal).grid(row=j, column=3, padx=(4, 10), pady=4)
+            ttk.Checkbutton(self, text="Muted (Windows)", variable=vars_["muted"], command=self._write_signal).grid(row=j, column=4, padx=(4, 10), pady=4)
+            ttk.Checkbutton(self, text="Talking", variable=vars_["talking"], command=self._write_signal).grid(row=j, column=5, padx=(4, 10), pady=4)
+
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self._tick()
         self.deiconify()
@@ -150,15 +192,28 @@ class SimulatorApp(tk.Tk):
                 continue
             battery_var = self.battery_vars.get(serial)
             charging_var = self.charging_vars.get(serial)
+            tracking_var = self.tracking_vars.get(serial)
+            hmd_active_var = self.hmd_active_vars.get(serial)
             devices[serial] = {
                 "device_class": device_class,
                 "model": model,
                 "battery_pct": battery_var.get() if battery_var is not None else None,
                 "charging": charging_var.get() if charging_var is not None else False,
+                "tracking_ok": tracking_var.get() if tracking_var is not None else None,
+                "hmd_active": hmd_active_var.get() if hmd_active_var is not None else None,
                 "role": role,
                 "manufacturer": manufacturer,
             }
-        payload = {"timestamp": time.time(), "devices": devices}
+        audio = {}
+        for mic_id, mic_name in FAKE_MICS:
+            v = self.mic_vars[mic_id]
+            audio[mic_id] = {
+                "name": mic_name,
+                "state": "ACTIVE" if v["connected"].get() else "NOTPRESENT",
+                "muted": v["muted"].get(),
+                "peak": 0.05 if v["talking"].get() else 0.0,
+            }
+        payload = {"timestamp": time.time(), "devices": devices, "audio": audio}
         tmp = self.signal_path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(payload, f)

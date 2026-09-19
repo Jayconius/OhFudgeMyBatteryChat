@@ -8,6 +8,7 @@ even if the original files move or the app updates.
 import dataclasses
 import json
 import os
+import secrets
 import shutil
 import uuid
 from typing import Optional
@@ -43,10 +44,36 @@ TRIGGER_OPTIONS = {
     "battery_normal": "Battery Normal (not low)",
     "device_disconnected": "Device Disconnected",
     "device_connected": "Device Connected",
+    "device_charging": "Device Charging",
+    "device_not_charging": "Device Not Charging",
+    "tracking_lost": "Tracking Lost",
+    "tracking_regained": "Tracking Regained",
+    "hmd_removed": "HMD Removed (Proximity)",
+    "hmd_worn": "HMD Worn (Proximity)",
+    # Only offered (and only evaluated) when an Effect's target is an Audio
+    # Device - see EffectItem.audio_endpoint_id.
+    "audio_connected": "Mic Connected",
+    "audio_disconnected": "Mic Disconnected",
+    "audio_muted": "Mic Muted",
+    "audio_unmuted": "Mic Unmuted",
+    "audio_talking": "Mic Talking",
+    "audio_silent": "Mic Silent For...",
 }
+AUDIO_TRIGGER_KEYS = tuple(k for k in TRIGGER_OPTIONS if k.startswith("audio_"))
 TARGET_MODE_OPTIONS = {
     "specific": "Specific Device",
     "all": "All Devices",
+    "audio": "Audio Device",
+}
+MACRO_ACTION_OPTIONS = {
+    "toggle": "Toggle mute",
+    "mute": "Mute",
+    "unmute": "Unmute",
+}
+CHAT_PERMISSION_OPTIONS = {
+    "everyone": "Everyone",
+    "vip": "VIP or higher",
+    "moderator": "Moderators or higher",
 }
 TEXT_POSITION_OPTIONS = {
     "above": "Above Picture",
@@ -104,6 +131,11 @@ class OverlayItem:
     exit_animation: str = "fade"         # only used when show_mode == "low_only"
     nudge_group_id: Optional[str] = None  # if set, position/direction/spacing come from that NudgeGroup
     text_gap_px: int = 4  # vertical gap between the picture and Label/Battery % text
+    # If set, this item only shows (on top of its normal show_mode logic)
+    # once every member of that SyncGroup is ready - so a rarely-used set of
+    # accessories pops in together instead of trickling in one at a time as
+    # each connects, each still keeping its own picture/label/animation.
+    sync_group_id: Optional[str] = None
 
     # Charging status (independent of show_mode - applies to both Always
     # Visible and Hidden until low)
@@ -179,6 +211,36 @@ class NudgeGroup:
         return NudgeGroup(**{k: v for k, v in d.items() if k in known})
 
 
+SYNC_READY_MODE_OPTIONS = {
+    "all_connected": "All Connected",
+    "all_charged": "All Connected & Charged",
+}
+
+
+@dataclasses.dataclass
+class SyncGroup:
+    """A named set of Device items that should only ever appear together,
+    each keeping its own picture/label/animation - for VR accessories used
+    rarely (special-occasion gear), so they don't trickle in individually as
+    each connects but instead pop in as a set once every member is ready.
+    Independent of NudgeGroup, which shares one screen position instead -
+    a Device item can belong to both at once, or neither. Like NudgeGroup,
+    membership isn't stored here - it's derived from which OverlayItems
+    point at this group's id via their own sync_group_id."""
+    id: str
+    name: str
+    ready_mode: str = "all_connected"  # see SYNC_READY_MODE_OPTIONS
+    ready_threshold_pct: int = 95      # only used by "all_charged"
+
+    def to_dict(self):
+        return dataclasses.asdict(self)
+
+    @staticmethod
+    def from_dict(d: dict) -> "SyncGroup":
+        known = {f.name for f in dataclasses.fields(SyncGroup)}
+        return SyncGroup(**{k: v for k, v in d.items() if k in known})
+
+
 @dataclasses.dataclass
 class EffectItem:
     """A standalone popup effect (picture + optional caption + sound) bound
@@ -215,6 +277,22 @@ class EffectItem:
     outline_thickness_px: int = 2
     outline_color: str = "#000000"
 
+    # Twitch chat command (optional, additional way to trigger this effect -
+    # independent of the trigger/target above, which still work normally).
+    # Firing pops the effect up for duration_sec regardless of duration_mode,
+    # since a chat command is a momentary event, not an ongoing state.
+    chat_command: Optional[str] = None   # e.g. "!battery" - None/empty = no chat trigger
+    chat_permission: str = "everyone"    # see CHAT_PERMISSION_OPTIONS
+
+    # Audio Device target (target_mode == "audio") - a Windows recording
+    # endpoint instead of a SteamVR device. The id is Windows' own endpoint
+    # id (it changes if a USB receiver moves to another port - see
+    # AudioMonitor rebind); audio_name is the last-known Windows name so an
+    # unplugged device still shows something readable.
+    audio_endpoint_id: Optional[str] = None
+    audio_name: str = ""
+    audio_silent_sec: int = 30           # only used by the audio_silent trigger
+
     def to_dict(self):
         return dataclasses.asdict(self)
 
@@ -222,6 +300,28 @@ class EffectItem:
     def from_dict(d: dict) -> "EffectItem":
         known = {f.name for f in dataclasses.fields(EffectItem)}
         return EffectItem(**{k: v for k, v in d.items() if k in known})
+
+
+@dataclasses.dataclass
+class MacroItem:
+    """One mute macro: a button on the local Macros page and/or a global
+    hotkey that mutes, unmutes or toggles a Windows recording device. It
+    sets the *Windows* mute flag - the same one the Mic Muted/Unmuted
+    triggers read - so an Effect can show a MUTED indicator for it."""
+    id: str
+    label: str
+    endpoint_id: Optional[str] = None
+    endpoint_name: str = ""             # last-known Windows name, for display when unplugged
+    action: str = "toggle"              # see MACRO_ACTION_OPTIONS
+    hotkey: Optional[str] = None        # e.g. "CTRL+SHIFT+NUM5" - see hotkeys.parse_hotkey
+
+    def to_dict(self):
+        return dataclasses.asdict(self)
+
+    @staticmethod
+    def from_dict(d: dict) -> "MacroItem":
+        known = {f.name for f in dataclasses.fields(MacroItem)}
+        return MacroItem(**{k: v for k, v in d.items() if k in known})
 
 
 @dataclasses.dataclass
@@ -235,9 +335,26 @@ class AppConfig:
     theme: str = "system"  # "system" | "light" | "dark" - see THEME_OPTIONS
     icon_check_version: str = ""  # last APP_VERSION the new-icons prompt ran for
     close_action: str = "ask"  # see CLOSE_ACTION_OPTIONS - "ask" prompts once on the first close
+    # Twitch chat-command connection (experimental/beta) - access_token is
+    # refreshed in place using refresh_token as it expires; twitch_login is
+    # both the display name shown in Settings and the IRC channel joined.
+    twitch_connected: bool = False
+    twitch_login: Optional[str] = None
+    twitch_access_token: Optional[str] = None
+    twitch_refresh_token: Optional[str] = None
     items: list = dataclasses.field(default_factory=list)         # list[OverlayItem]
     effects: list = dataclasses.field(default_factory=list)       # list[EffectItem]
     nudge_groups: list = dataclasses.field(default_factory=list)  # list[NudgeGroup]
+    sync_groups: list = dataclasses.field(default_factory=list)   # list[SyncGroup]
+    # Audio devices: user-set names keyed by Windows endpoint id (Windows
+    # names are generic - "Microphone (USB Audio Device)"), shown in the
+    # picker and used as the default label for anything watching the device.
+    audio_nicknames: dict = dataclasses.field(default_factory=dict)
+    macros: list = dataclasses.field(default_factory=list)        # list[MacroItem]
+    # Random secret the Macros web page carries and must send back with each
+    # button press, so a stray web page can't trigger a mute - generated on
+    # first use, never shown in the GUI.
+    macro_token: str = ""
 
     def to_dict(self):
         return {
@@ -250,9 +367,17 @@ class AppConfig:
             "theme": self.theme,
             "icon_check_version": self.icon_check_version,
             "close_action": self.close_action,
+            "twitch_connected": self.twitch_connected,
+            "twitch_login": self.twitch_login,
+            "twitch_access_token": self.twitch_access_token,
+            "twitch_refresh_token": self.twitch_refresh_token,
             "items": [it.to_dict() for it in self.items],
             "effects": [ef.to_dict() for ef in self.effects],
             "nudge_groups": [g.to_dict() for g in self.nudge_groups],
+            "sync_groups": [g.to_dict() for g in self.sync_groups],
+            "audio_nicknames": dict(self.audio_nicknames),
+            "macros": [m.to_dict() for m in self.macros],
+            "macro_token": self.macro_token,
         }
 
     @staticmethod
@@ -267,10 +392,18 @@ class AppConfig:
             theme=d.get("theme", "system"),
             icon_check_version=d.get("icon_check_version", ""),
             close_action=d.get("close_action", "ask"),
+            twitch_connected=d.get("twitch_connected", False),
+            twitch_login=d.get("twitch_login"),
+            twitch_access_token=d.get("twitch_access_token"),
+            twitch_refresh_token=d.get("twitch_refresh_token"),
         )
         cfg.items = [OverlayItem.from_dict(it) for it in d.get("items", [])]
         cfg.effects = [EffectItem.from_dict(ef) for ef in d.get("effects", [])]
         cfg.nudge_groups = [NudgeGroup.from_dict(g) for g in d.get("nudge_groups", [])]
+        cfg.sync_groups = [SyncGroup.from_dict(g) for g in d.get("sync_groups", [])]
+        cfg.audio_nicknames = {k: v for k, v in (d.get("audio_nicknames") or {}).items() if isinstance(v, str)}
+        cfg.macros = [MacroItem.from_dict(m) for m in d.get("macros", [])]
+        cfg.macro_token = d.get("macro_token", "") or ""
         return cfg
 
 
@@ -299,6 +432,12 @@ def new_item_id() -> str:
 
 new_effect_id = new_item_id  # same scheme; separate name for readability at call sites
 new_group_id = new_item_id
+new_sync_group_id = new_item_id
+new_macro_id = new_item_id
+
+
+def new_macro_token() -> str:
+    return secrets.token_urlsafe(24)
 
 
 def import_media(item_id: str, source_path: str, kind: str) -> str:

@@ -2,3 +2,5 @@ openvr
 pillow
 pyinstaller
 pystray
+pycaw
+comtypes

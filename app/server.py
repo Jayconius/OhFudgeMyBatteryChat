@@ -4,6 +4,7 @@ each overlay item/effect references.
 
 Bound to 127.0.0.1 only - this is a local OBS integration, not a public service.
 """
+import hmac
 import json
 import mimetypes
 import os
@@ -13,6 +14,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
+from . import audio_monitor as audio_mod
 from . import config as config_mod
 from . import paths
 from .vr_monitor import VRMonitor
@@ -27,8 +29,10 @@ DEFAULTS_BY_CLASS = {
     "GenericTracker": "/defaults/tracker_normal.png",
     "TrackingReference": "/defaults/base_station_normal.png",
     "Service": "/defaults/service_normal.png",
+    "Microphone": "/defaults/microphone_normal.png",
     "Other": "/defaults/generic_normal.png",
     "_generic": "/defaults/generic_normal.png",
+    "_mic_muted": "/defaults/microphone_muted.png",
     "_low": "/defaults/low_battery.png",
     "_charging": "/defaults/charging.png",
     "_warn_drain": "/defaults/drain_warning.png",
@@ -81,6 +85,8 @@ def _device_dict(devices):
         serial: {
             "battery_pct": d.battery_pct,
             "charging": d.charging,
+            "tracking_ok": d.tracking_ok,
+            "hmd_active": d.hmd_active,
             "device_class": d.device_class,
             "model": d.model,
             "role": d.role,
@@ -161,6 +167,7 @@ def _item_payload(item, defaults_by_class: dict, nudge_groups_by_id: dict):
         "id": item.id,
         "label": item.label,
         "device_serial": item.device_serial,
+        "sync_group_id": item.sync_group_id or "",
         "x_pct": x_pct,
         "y_pct": y_pct,
         "width_px": item.width_px,
@@ -248,9 +255,17 @@ def _effect_payload(effect, defaults_by_class: dict, nudge_groups_by_id: dict):
         "outline_enabled": effect.outline_enabled,
         "outline_thickness_px": effect.outline_thickness_px,
         "outline_color": effect.outline_color,
-        "pic_src": f"/media/effect/{effect.id}/picture" if pic else defaults_by_class.get(effect.device_class_hint, defaults_by_class.get("_generic", "")),
+        "pic_src": f"/media/effect/{effect.id}/picture" if pic else _default_effect_picture(effect, defaults_by_class),
         "sound_src": f"/media/effect/{effect.id}/sound" if sound else defaults_by_class.get("_beep", ""),
+        "audio_endpoint_id": effect.audio_endpoint_id or "",
+        "audio_silent_sec": effect.audio_silent_sec,
     }
+
+
+def _default_effect_picture(effect, defaults_by_class):
+    if effect.target_mode == "audio" and effect.trigger == "audio_muted":
+        return defaults_by_class.get("_mic_muted", "")
+    return defaults_by_class.get(effect.device_class_hint, defaults_by_class.get("_generic", ""))
 
 
 OVERLAY_PAGE_TEMPLATE = r"""<!doctype html>
@@ -324,6 +339,7 @@ OVERLAY_PAGE_TEMPLATE = r"""<!doctype html>
 <script>
 const ITEMS = __ITEMS_JSON__;
 const EFFECTS = __EFFECTS_JSON__;
+const SYNC_GROUPS = __SYNC_GROUPS_JSON__;
 const PAGE_CONFIG_VERSION = __CONFIG_VERSION__;
 const root = document.getElementById('root');
 const state = {};       // devices:  id -> { lastLow, shown, lastSoundTs, el, audio, pic, pct }
@@ -543,6 +559,16 @@ function effectTriggerMatches(effect, dev) {
   if (effect.trigger === 'device_disconnected') return !dev;
   if (effect.trigger === 'device_connected') return !!dev;
   if (!dev) return false;
+  // Strict === true/false (not truthiness) throughout below: null/undefined
+  // means "this device doesn't report that state" (e.g. a base station has
+  // no charging/tracking/proximity info at all) and should satisfy neither
+  // direction of a trigger, not be treated as a default false.
+  if (effect.trigger === 'device_charging') return dev.charging === true;
+  if (effect.trigger === 'device_not_charging') return dev.charging === false;
+  if (effect.trigger === 'tracking_lost') return dev.tracking_ok === false;
+  if (effect.trigger === 'tracking_regained') return dev.tracking_ok === true;
+  if (effect.trigger === 'hmd_removed') return dev.hmd_active === false;
+  if (effect.trigger === 'hmd_worn') return dev.hmd_active === true;
   const battery = dev.battery_pct;
   if (battery === null || battery === undefined) return false;
   const isLow = battery <= effect.low_threshold_pct;
@@ -551,9 +577,54 @@ function effectTriggerMatches(effect, dev) {
   return false;
 }
 
+// Resolves each SyncGroup's readiness against current live device state -
+// "ready" gates every member item's visibility as an additional AND, on
+// top of that item's own normal show_mode logic, so a set of rarely-used
+// accessories (see config.SyncGroup) pops in together instead of trickling
+// in one at a time as each happens to connect.
+function computeSyncGroupsReady(data) {
+  const ready = {};
+  for (const group of SYNC_GROUPS) {
+    const members = ITEMS.filter((it) => it.sync_group_id === group.id);
+    ready[group.id] = members.length > 0 && members.every((it) => {
+      const dev = data.devices[it.device_serial];
+      if (!dev) return false;
+      if (group.ready_mode === 'all_charged') {
+        const battery = dev.battery_pct;
+        return battery !== null && battery !== undefined && battery >= group.ready_threshold_pct;
+      }
+      return true;
+    });
+  }
+  return ready;
+}
+
 // Resolves an effect's target (Specific device, or All devices minus any
-// Ignore list) against the current status payload.
+// Ignore list) against the current status payload. A Twitch chat command
+// match (see twitch_monitor.py) is an independent, additional way to show
+// the effect - checked first since it doesn't depend on target_mode/device
+// state at all, just a temporary server-side "activated until" timer.
+function audioTriggerMatches(effect, a) {
+  // 'a' is that microphone's entry in data.audio_devices, or undefined when
+  // it isn't reporting at all (treated as not connected).
+  const connected = !!(a && a.connected);
+  switch (effect.trigger) {
+    case 'audio_disconnected': return !connected;
+    case 'audio_connected': return connected;
+    case 'audio_muted': return connected && a.muted === true;
+    case 'audio_unmuted': return connected && a.muted === false;
+    case 'audio_talking': return connected && a.talking === true;
+    case 'audio_silent': return connected && a.silent_sec >= effect.audio_silent_sec;
+  }
+  return false;
+}
+
 function effectShouldShow(effect, data) {
+  if (data.chat_active_effects && data.chat_active_effects.includes(effect.id)) return true;
+  if (effect.target_mode === 'audio') {
+    if (!data.audio_devices) return false;  // no audio monitor at all - say nothing rather than "disconnected"
+    return audioTriggerMatches(effect, data.audio_devices[effect.audio_endpoint_id]);
+  }
   if (effect.target_mode === 'all') {
     const ignore = new Set(effect.ignore_device_serials || []);
     const serials = Object.keys(data.known_devices || {}).filter((s) => !ignore.has(s));
@@ -697,6 +768,8 @@ async function poll() {
       return;
     }
 
+    const syncReady = computeSyncGroupsReady(data);
+
     for (const item of ITEMS) {
       const s = state[item.id];
       const dev = data.devices[item.device_serial];
@@ -707,6 +780,7 @@ async function poll() {
         s.chargingBaselinePct = null;
         continue;
       }
+      const groupOk = !item.sync_group_id || syncReady[item.sync_group_id] === true;
 
       const battery = dev.battery_pct;
       const hasBattery = battery !== null && battery !== undefined;
@@ -738,11 +812,11 @@ async function poll() {
       if (s.pct) s.pct.textContent = hasBattery ? Math.round(battery) + '%' : '--%';
       s.el.classList.toggle('low', showLowPic);
 
-      const shouldBeVisible = (isLow || (item.warn_drain_while_charging && isDraining))
-        && !(item.hide_on_charging && isCharging && !isDraining);
+      const shouldBeVisible = ((isLow || (item.warn_drain_while_charging && isDraining))
+        && !(item.hide_on_charging && isCharging && !isDraining)) && groupOk;
 
       if (item.show_mode === 'always') {
-        s.el.classList.add('visible');
+        s.el.classList.toggle('visible', groupOk);
       } else {
         if (shouldBeVisible && !s.shown) {
           s.el.style.display = 'flex';
@@ -866,6 +940,115 @@ INDEX_PAGE = """<!doctype html>
 """.replace("__APP_TITLE__", APP_TITLE)
 
 
+MACROS_PAGE_TEMPLATE = r"""<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__APP_TITLE__ - Macros</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; background: #15171c; color: #eef1f7; font-family: "Segoe UI", Arial, sans-serif; }
+  h1 { font-size: 16px; font-weight: 600; margin: 14px 18px 0; color: #8f99ad; }
+  #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; padding: 14px 18px; }
+  .tile { border: none; border-radius: 16px; min-height: 160px; padding: 16px; cursor: pointer; color: #fff; text-align: left;
+          display: flex; flex-direction: column; justify-content: space-between; font: inherit; transition: transform 0.08s ease; }
+  .tile:active { transform: scale(0.97); }
+  .tile .name { font-size: 22px; font-weight: 600; }
+  .tile .state { font-size: 38px; font-weight: 700; letter-spacing: 0.5px; }
+  .tile .meta { font-size: 13px; opacity: 0.8; }
+  .tile.live { background: #1f7a4d; }
+  .tile.muted { background: #b3362f; }
+  .tile.offline { background: #454b57; }
+  .empty { padding: 18px; color: #8f99ad; }
+  #msg { position: fixed; left: 0; right: 0; bottom: 0; padding: 10px 18px; background: #5a2320; color: #fff; display: none; font-size: 14px; }
+</style>
+</head>
+<body>
+<h1>Mute macros</h1>
+<div id="grid"></div>
+<div id="msg"></div>
+<script>
+const TOKEN = __MACRO_TOKEN__;
+const ACTION_TEXT = { toggle: 'Toggle mute', mute: 'Mute', unmute: 'Unmute' };
+const grid = document.getElementById('grid');
+const msg = document.getElementById('msg');
+const tiles = {};
+let msgTimer = null;
+
+function showMessage(text) {
+  msg.textContent = text;
+  msg.style.display = 'block';
+  clearTimeout(msgTimer);
+  msgTimer = setTimeout(() => { msg.style.display = 'none'; }, 3500);
+}
+
+function tileState(m) {
+  if (!m.connected) return ['offline', 'OFFLINE'];
+  return m.muted ? ['muted', 'MUTED'] : ['live', 'LIVE'];
+}
+
+function render(macros) {
+  if (!macros.length) {
+    grid.innerHTML = '<div class="empty">No macros yet. Add one with the Macros button in the app.</div>';
+    for (const k in tiles) delete tiles[k];
+    return;
+  }
+  const seen = new Set();
+  for (const m of macros) {
+    seen.add(m.id);
+    let t = tiles[m.id];
+    if (!t) {
+      grid.querySelectorAll('.empty').forEach((e) => e.remove());
+      t = document.createElement('button');
+      t.className = 'tile';
+      t.innerHTML = '<span class="name"></span><span class="state"></span><span class="meta"></span>';
+      t.addEventListener('click', () => press(m.id));
+      grid.appendChild(t);
+      tiles[m.id] = t;
+    }
+    const [cls, word] = tileState(m);
+    t.className = 'tile ' + cls;
+    t.querySelector('.name').textContent = m.label;
+    t.querySelector('.state').textContent = word;
+    t.querySelector('.meta').textContent = (ACTION_TEXT[m.action] || m.action) + (m.hotkey ? '  -  ' + m.hotkey : '');
+  }
+  for (const id of Object.keys(tiles)) {
+    if (!seen.has(id)) { tiles[id].remove(); delete tiles[id]; }
+  }
+}
+
+async function refresh() {
+  try {
+    const res = await fetch('/api/macros/state', { cache: 'no-store' });
+    render((await res.json()).macros);
+  } catch (e) {
+    showMessage('Lost connection to the app');
+  }
+}
+
+async function press(id) {
+  try {
+    const res = await fetch('/api/macro/' + encodeURIComponent(id), { method: 'POST', headers: { 'X-Macro-Token': TOKEN } });
+    if (!res.ok) {
+      let why = 'That macro could not run';
+      try { why = (await res.json()).error || why; } catch (e) {}
+      showMessage(why);
+    }
+  } catch (e) {
+    showMessage('Lost connection to the app');
+  }
+  refresh();
+}
+
+refresh();
+setInterval(refresh, 700);
+</script>
+</body>
+</html>
+"""
+
+
 class _Handler(BaseHTTPRequestHandler):
     server_version = "OhFudgeMyBatteryChat/1.0"
 
@@ -930,7 +1113,22 @@ class _Handler(BaseHTTPRequestHandler):
             payload = _device_payload(snapshot)
             payload["preview"] = _preview_payload(self.server.preview_state)
             payload["config_version"] = _config_version()
+            if self.server.twitch_monitor is not None:
+                payload["chat_active_effects"] = list(self.server.twitch_monitor.active_effect_ids())
+            if self.server.audio_monitor is not None:
+                payload["audio_devices"] = self.server.audio_monitor.get_snapshot()
             self._send_json(payload)
+            return
+
+        if path == "/macros":
+            self._handle_macros_page()
+            return
+
+        if path == "/api/macros/state":
+            if not self._host_ok():
+                self.send_error(403, "Bad host")
+                return
+            self._send_json({"macros": self._macro_states()})
             return
 
         if path == "/media/_preview/low":
@@ -953,6 +1151,87 @@ class _Handler(BaseHTTPRequestHandler):
 
         self.send_error(404, "Not found")
 
+    # -- mute macros: big-button page + press endpoint ------------------
+    def _host_ok(self):
+        """Only answer requests addressed to this machine by its own name -
+        stops a web page in the user's browser reaching this server through a
+        DNS-rebinding trick under some other hostname."""
+        host = (self.headers.get("Host") or "").lower()
+        port = self.server.server_address[1]
+        return host in (f"127.0.0.1:{port}", f"localhost:{port}", f"[::1]:{port}")
+
+    def _macro_states(self):
+        cfg = self.server.get_config()
+        snap = self.server.audio_monitor.get_snapshot() if self.server.audio_monitor else {}
+        rows = []
+        for m in cfg.macros:
+            a = snap.get(m.endpoint_id or "")
+            rows.append({
+                "id": m.id,
+                "label": m.label or audio_mod.display_name(m.endpoint_id or "", m.endpoint_name, cfg.audio_nicknames),
+                "action": m.action,
+                "hotkey": m.hotkey or "",
+                "connected": bool(a and a.get("connected")),
+                "muted": a.get("muted") if a else None,
+            })
+        return rows
+
+    def _handle_macros_page(self):
+        if not self._host_ok():
+            self.send_error(403, "Bad host")
+            return
+        cfg = self.server.get_config()
+        if not cfg.macro_token:
+            cfg.macro_token = config_mod.new_macro_token()
+            config_mod.save(cfg)
+        html = MACROS_PAGE_TEMPLATE.replace("__APP_TITLE__", APP_TITLE).replace("__MACRO_TOKEN__", json.dumps(cfg.macro_token))
+        self._send_html(html)
+
+    def do_POST(self):
+        path = posixpath.normpath(urlsplit(self.path).path)
+        try:
+            length = min(int(self.headers.get("Content-Length") or 0), 4096)
+        except ValueError:
+            length = 0
+        if length:
+            self.rfile.read(length)  # nothing here needs a body; just keep the connection tidy
+        if path.startswith("/api/macro/"):
+            self._handle_macro_press(path.rsplit("/", 1)[-1])
+            return
+        self.send_error(404, "Not found")
+
+    def _handle_macro_press(self, macro_id):
+        # Three independent checks, because a mute button reachable from any
+        # web page open in the user's browser would be a real problem: the
+        # Host must be this machine's own name, a browser-supplied Origin
+        # must be this same server, and the per-install secret the page was
+        # served with must come back in a header (a cross-site request can't
+        # read that page, and a custom header forces a CORS preflight this
+        # server never answers).
+        if not self._host_ok():
+            self.send_error(403, "Bad host")
+            return
+        origin = self.headers.get("Origin")
+        if origin is not None:
+            port = self.server.server_address[1]
+            if origin.lower() not in (f"http://127.0.0.1:{port}", f"http://localhost:{port}", f"http://[::1]:{port}"):
+                self.send_error(403, "Bad origin")
+                return
+        cfg = self.server.get_config()
+        token = self.headers.get("X-Macro-Token") or ""
+        if not cfg.macro_token or not hmac.compare_digest(token.encode("utf-8"), cfg.macro_token.encode("utf-8")):
+            self.send_error(403, "Bad token")
+            return
+        macro = next((m for m in cfg.macros if m.id == macro_id), None)
+        if macro is None:
+            self._send_json({"ok": False, "error": "unknown macro"}, 404)
+            return
+        if self.server.audio_monitor is None or not macro.endpoint_id:
+            self._send_json({"ok": False, "error": "no microphone set for this macro"}, 400)
+            return
+        result = self.server.audio_monitor.set_mute(macro.endpoint_id, macro.action)
+        self._send_json(result, 200 if result.get("ok") else 409)
+
     def _handle_overlay(self):
         cfg = self.server.get_config()
         from . import default_assets
@@ -960,9 +1239,14 @@ class _Handler(BaseHTTPRequestHandler):
         nudge_groups_by_id = {g.id: g for g in cfg.nudge_groups}
         items_json = json.dumps([_item_payload(it, DEFAULTS_BY_CLASS, nudge_groups_by_id) for it in cfg.items])
         effects_json = json.dumps([_effect_payload(ef, DEFAULTS_BY_CLASS, nudge_groups_by_id) for ef in cfg.effects])
+        sync_groups_json = json.dumps([
+            {"id": g.id, "ready_mode": g.ready_mode, "ready_threshold_pct": g.ready_threshold_pct}
+            for g in cfg.sync_groups
+        ])
         html = OVERLAY_PAGE_TEMPLATE.replace("__APP_TITLE__", APP_TITLE)
         html = html.replace("__ITEMS_JSON__", items_json)
         html = html.replace("__EFFECTS_JSON__", effects_json)
+        html = html.replace("__SYNC_GROUPS_JSON__", sync_groups_json)
         html = html.replace("__POLL_MS__", str(int(max(0.25, cfg.poll_interval_sec) * 1000)))
         html = html.replace("__CONFIG_VERSION__", json.dumps(_config_version()))
         self._send_html(html)
@@ -1019,19 +1303,23 @@ class OverlayHTTPServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
 
-    def __init__(self, port: int, get_config, vr_monitor: VRMonitor, preview_state: PreviewState):
+    def __init__(self, port: int, get_config, vr_monitor: VRMonitor, preview_state: PreviewState, twitch_monitor=None, audio_monitor=None):
         super().__init__(("127.0.0.1", port), _Handler)
         self.get_config = get_config
         self.vr_monitor = vr_monitor
         self.preview_state = preview_state
+        self.twitch_monitor = twitch_monitor  # optional - None means no chat-command support wired up
+        self.audio_monitor = audio_monitor    # optional - None means no Audio Device effects / mute macros
 
 
 class ServerController:
     """Starts/stops the overlay HTTP server on a background thread from the GUI."""
 
-    def __init__(self, get_config, vr_monitor: VRMonitor):
+    def __init__(self, get_config, vr_monitor: VRMonitor, twitch_monitor=None, audio_monitor=None):
         self.get_config = get_config
         self.vr_monitor = vr_monitor
+        self.twitch_monitor = twitch_monitor
+        self.audio_monitor = audio_monitor
         self.preview_state = PreviewState()
         self._server: OverlayHTTPServer = None
         self._thread: threading.Thread = None
@@ -1053,7 +1341,7 @@ class ServerController:
             return True
         port = self.get_config().port
         try:
-            self._server = OverlayHTTPServer(port, self.get_config, self.vr_monitor, self.preview_state)
+            self._server = OverlayHTTPServer(port, self.get_config, self.vr_monitor, self.preview_state, self.twitch_monitor, self.audio_monitor)
         except OSError:
             self._server = None
             return False

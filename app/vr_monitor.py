@@ -53,6 +53,10 @@ class DeviceState:
     charging: Optional[bool]
     role: str = ""
     manufacturer: str = ""
+    # None on any device this doesn't apply to (base stations, the Service
+    # pseudo-device) or when OpenVR couldn't report it this cycle.
+    tracking_ok: Optional[bool] = None   # HMD/Controller/GenericTracker only - eTrackingResult == Running_OK
+    hmd_active: Optional[bool] = None    # HMD only - proximity/activity level == UserInteraction (worn)
 
 
 @dataclass
@@ -179,12 +183,22 @@ class VRMonitor:
                 charging=d.get("charging"),
                 role=d.get("role", ""),
                 manufacturer=d.get("manufacturer", ""),
+                tracking_ok=d.get("tracking_ok"),
+                hmd_active=d.get("hmd_active"),
             )
         return devices
 
     def _poll_once(self):
         devices: Dict[str, DeviceState] = {}
         vr = self._vr_system
+        try:
+            # One call covers every device index - eTrackingResult per pose
+            # is how OpenVR reports a device having lost tracking (out of
+            # range / recalibrating) without it fully disconnecting.
+            poses = vr.getDeviceToAbsoluteTrackingPose(openvr.TrackingUniverseStanding, 0, openvr.k_unMaxTrackedDeviceCount)
+        except Exception:
+            poses = None
+
         for i in range(openvr.k_unMaxTrackedDeviceCount):
             try:
                 if not vr.isTrackedDeviceConnected(i):
@@ -239,6 +253,21 @@ class VRMonitor:
                 except Exception:
                     role = ""
 
+            tracking_ok = None
+            if poses is not None and device_class in ("HMD", "Controller", "GenericTracker"):
+                try:
+                    tracking_ok = poses[i].eTrackingResult == openvr.TrackingResult_Running_OK
+                except Exception:
+                    tracking_ok = None
+
+            hmd_active = None
+            if device_class == "HMD":
+                try:
+                    level = vr.getTrackedDeviceActivityLevel(i)
+                    hmd_active = level == openvr.k_EDeviceActivityLevel_UserInteraction
+                except Exception:
+                    hmd_active = None
+
             devices[serial] = DeviceState(
                 serial=serial,
                 device_class=device_class,
@@ -248,6 +277,8 @@ class VRMonitor:
                 charging=charging,
                 role=role,
                 manufacturer=manufacturer,
+                tracking_ok=tracking_ok,
+                hmd_active=hmd_active,
             )
 
         self._apply_devices(devices, connected=True)

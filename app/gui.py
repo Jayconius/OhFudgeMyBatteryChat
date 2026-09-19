@@ -20,19 +20,25 @@ import webbrowser
 from tkinter import colorchooser, filedialog, messagebox, ttk
 from types import SimpleNamespace
 
+from . import audio_monitor as audio_mod
 from . import bundled_icons
 from . import config as config_mod
 from . import default_assets
+from . import hotkeys
 from . import i18n
 from . import paths
 from . import piqad
 from . import theme
+from . import twitch_auth
 from . import update_check
+from .audio_monitor import AudioMonitor
+from .hotkeys import HotkeyManager
 from .server import ServerController
+from .twitch_monitor import TwitchMonitor
 from .vr_monitor import VRMonitor
 
 APP_TITLE = "Oh Fudge, My Battery Chat!"  # the pun stays the same in every language
-APP_VERSION = "1.2.3beta"
+APP_VERSION = "1.3.0"
 APP_AUTHOR = "Jayconius"
 APP_GITHUB_URL = "https://github.com/Jayconius/OhFudgeMyBatteryChat"
 APP_CONTACT_URL = "https://jayconius.com"
@@ -391,6 +397,502 @@ class CloseActionDialog(tk.Toplevel):
         self.on_choice(action)
 
 
+class TwitchConnectDialog(tk.Toplevel):
+    """Runs the Device Code flow (app/twitch_auth.py): requests a code,
+    shows it plus a link to Twitch's own approval page (never anything
+    hosted by this app), and polls in the background until the user
+    approves there or it times out. on_success(login, access_token,
+    refresh_token) is called once, back on the Tk main thread."""
+
+    def __init__(self, parent, on_success):
+        super().__init__(parent)
+        self.withdraw()
+        self.on_success = on_success
+        self._closed = False
+        self.title(i18n.t_piqad("dlg_title_twitch_connect"))
+        self.resizable(False, False)
+        theme.apply_window_theme(self, getattr(parent, "dark_mode", False))
+
+        self.frm = ttk.Frame(self)
+        self.frm.pack(padx=20, pady=18)
+        self.status_var = tk.StringVar(value=i18n.t_piqad("twitch_requesting_code"))
+        ttk.Label(self.frm, textvariable=self.status_var, font=(_chrome_font_family(), 11, "bold")).pack(anchor="w")
+
+        self.body_frame = ttk.Frame(self.frm)
+        self.body_frame.pack(fill="x", pady=(10, 0))
+
+        btns = ttk.Frame(self.frm)
+        btns.pack(anchor="e", pady=(14, 0))
+        ttk.Button(btns, text=i18n.t_piqad("btn_cancel"), command=self._on_cancel).pack(side="right")
+
+        self.protocol("WM_DELETE_WINDOW", self._on_cancel)
+        self.grab_set()
+        self.transient(parent)
+        theme.apply_window_theme(self, getattr(parent, "dark_mode", False))
+        self.deiconify()
+
+        threading.Thread(target=self._worker, daemon=True).start()
+
+    def _on_cancel(self):
+        self._closed = True
+        self.destroy()
+
+    def _worker(self):
+        try:
+            device = twitch_auth.request_device_code()
+        except RuntimeError as exc:
+            self.after(0, lambda: self._show_error(str(exc)))
+            return
+        self.after(0, lambda: self._show_code(device))
+        try:
+            result = twitch_auth.poll_for_token(
+                device["device_code"], device["interval"], device["expires_in"],
+            )
+        except RuntimeError as exc:
+            self.after(0, lambda: self._show_error(str(exc)))
+            return
+        self.after(0, lambda: self._finish(result))
+
+    def _show_code(self, device):
+        if self._closed:
+            return
+        self.status_var.set(i18n.t_piqad("twitch_waiting_approval"))
+        for w in self.body_frame.winfo_children():
+            w.destroy()
+        link = ttk.Label(self.body_frame, text=device["verification_uri"], foreground="#3d8bff", cursor="hand2", font=_default_font())
+        link.pack(anchor="w")
+        link.bind("<Button-1>", lambda e: webbrowser.open(device["verification_uri"]))
+        code_row = ttk.Frame(self.body_frame)
+        code_row.pack(anchor="w", pady=(8, 0))
+        ttk.Label(code_row, text=i18n.t_piqad("lbl_twitch_code")).pack(side="left")
+        ttk.Label(code_row, text=device["user_code"], font=(_chrome_font_family(), 16, "bold")).pack(side="left", padx=(8, 0))
+        webbrowser.open(device["verification_uri"])
+
+    def _show_error(self, message):
+        if self._closed:
+            return
+        self.status_var.set(i18n.t_piqad("twitch_connect_failed"))
+        for w in self.body_frame.winfo_children():
+            w.destroy()
+        ttk.Label(self.body_frame, text=message, foreground="#cc4444", wraplength=380, justify="left").pack(anchor="w")
+
+    def _finish(self, result):
+        if self._closed:
+            return
+        self._closed = True
+        self.destroy()
+        self.on_success(result["login"], result["access_token"], result.get("refresh_token"))
+
+
+class AudioPickerFrame(ttk.Frame):
+    """Microphone chooser shared by Audio Device Effects and the mute macros:
+    a search box, a list of Windows recording devices (real hardware first;
+    virtual drivers and unplugged devices stay hidden unless asked for), and
+    a Device name box that starts out as Windows' generic name and saves as a
+    nickname when changed. Nothing is written to `nicknames` until the owner
+    calls commit_nickname() on Save."""
+
+    def __init__(self, parent, nicknames, current_id=None, current_name="", on_change=None):
+        super().__init__(parent)
+        self.nicknames = nicknames
+        self._current_id = current_id
+        self._current_name = current_name or ""
+        self._selected_id = current_id
+        self._on_change = on_change
+        self._all = []
+        self._by_id = {}
+        self._row_ids = []
+        self._rebind = None          # (old_id, new_id, name): a same-named device replaced the saved one
+        self._rebound_from = None
+        self._build()
+        self.refresh()
+
+    def _build(self):
+        top = ttk.Frame(self)
+        top.pack(fill="x")
+        ttk.Label(top, text=i18n.t_piqad("lbl_audio_search")).pack(side="left")
+        self.search_var = tk.StringVar()
+        ttk.Entry(top, textvariable=self.search_var, width=28).pack(side="left", padx=6)
+        self.search_var.trace_add("write", lambda *a: self._refill())
+        ttk.Button(top, text=i18n.t_piqad("btn_refresh"), command=self.refresh).pack(side="left")
+
+        opts = ttk.Frame(self)
+        opts.pack(fill="x", pady=(4, 0))
+        self.show_virtual_var = tk.BooleanVar(value=False)
+        self.show_unplugged_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(opts, text=i18n.t_piqad("chk_show_virtual_audio"), variable=self.show_virtual_var, command=self._refill).pack(side="left")
+        ttk.Checkbutton(opts, text=i18n.t_piqad("chk_show_unplugged_audio"), variable=self.show_unplugged_var, command=self._refill).pack(side="left", padx=(12, 0))
+
+        list_row = ttk.Frame(self)
+        list_row.pack(fill="x", pady=(4, 0))
+        self.listbox = tk.Listbox(list_row, height=6, exportselection=False, activestyle="none")
+        scroll = ttk.Scrollbar(list_row, orient="vertical", command=self.listbox.yview)
+        self.listbox.configure(yscrollcommand=scroll.set)
+        self.listbox.pack(side="left", fill="x", expand=True)
+        scroll.pack(side="left", fill="y")
+        self.listbox.bind("<<ListboxSelect>>", self._on_pick)
+
+        self._rebind_row = ttk.Frame(self)
+        ttk.Label(self._rebind_row, text=i18n.t_piqad("hint_audio_rebind"), foreground="#cc8800", wraplength=420, justify="left").pack(side="left")
+        ttk.Button(self._rebind_row, text=i18n.t_piqad("btn_use_it"), command=self._use_rebind).pack(side="left", padx=(8, 0))
+
+        name_row = ttk.Frame(self)
+        name_row.pack(fill="x", pady=(8, 0))
+        ttk.Label(name_row, text=i18n.t_piqad("lbl_audio_device_name")).pack(side="left")
+        self.name_var = tk.StringVar()
+        ttk.Entry(name_row, textvariable=self.name_var, width=36).pack(side="left", padx=6)
+        self.win_name_lbl = ttk.Label(self, text="", foreground="#666")
+        self.win_name_lbl.pack(anchor="w")
+
+    # -- data ----------------------------------------------------------
+    def refresh(self):
+        self._all = audio_mod.list_endpoints()
+        self._by_id = {e.id: e for e in self._all}
+        self._update_rebind()
+        self._refill()
+        if self._selected_id:
+            self._fill_name_from(self._selected_id, keep_typed=True)
+
+    def _windows_name(self, eid):
+        e = self._by_id.get(eid)
+        if e:
+            return e.name
+        return self._current_name if eid == self._current_id else ""
+
+    def _update_rebind(self):
+        self._rebind = None
+        if self._current_id and self._selected_id == self._current_id and not self._rebound_from:
+            cur = self._by_id.get(self._current_id)
+            if cur is None or not cur.connected:
+                saved = {self._current_id: self._current_name or (cur.name if cur else "")}
+                found = audio_mod.find_rebind_candidates(saved, self._all)
+                if found:
+                    self._rebind = found[0]
+        if self._rebind:
+            self._rebind_row.pack(fill="x", pady=(4, 0), after=self.listbox.master)
+        else:
+            self._rebind_row.pack_forget()
+
+    def _refill(self):
+        query = self.search_var.get().strip().lower()
+        rows = []
+        for e in self._all:
+            keep = e.id == self._selected_id
+            if not keep:
+                if e.virtual and not self.show_virtual_var.get():
+                    continue
+                if not e.connected and not self.show_unplugged_var.get():
+                    continue
+                nick = self.nicknames.get(e.id, "")
+                if query and query not in f"{nick} {e.name}".lower():
+                    continue
+            rows.append(e)
+        if self._selected_id and self._selected_id not in {e.id for e in rows}:
+            rows.append(audio_mod.Endpoint(id=self._selected_id, name=self._current_name or self._selected_id, state="NOTPRESENT"))
+        rows.sort(key=lambda e: (not e.connected, e.virtual, e.name.lower()))
+
+        base = {e.id: self._base_text(e) for e in rows}
+        counts = {}
+        for text in base.values():
+            counts[text] = counts.get(text, 0) + 1
+
+        self.listbox.delete(0, tk.END)
+        self._row_ids = []
+        for e in rows:
+            text = base[e.id]
+            if counts[text] > 1:
+                text += f"  [{e.id[-5:-1]}]"
+            tags = []
+            if e.simulated:
+                tags.append(i18n.t("audio_tag_simulated"))
+            elif e.virtual:
+                tags.append(i18n.t("audio_tag_virtual"))
+            if not e.connected:
+                tags.append(i18n.t("audio_tag_not_connected"))
+            if tags:
+                text += "  - " + ", ".join(tags)
+            self.listbox.insert(tk.END, text)
+            self._row_ids.append(e.id)
+        if self._selected_id in self._row_ids:
+            idx = self._row_ids.index(self._selected_id)
+            self.listbox.selection_set(idx)
+            self.listbox.see(idx)
+
+    def _base_text(self, e):
+        nick = self.nicknames.get(e.id, "").strip()
+        return f"{nick}  ({e.name})" if nick and nick != e.name else e.name
+
+    def _fill_name_from(self, eid, keep_typed=False):
+        windows_name = self._windows_name(eid)
+        if not (keep_typed and self.name_var.get().strip()):
+            self.name_var.set(self.nicknames.get(eid, "").strip() or windows_name)
+        self.win_name_lbl.configure(text=i18n.t("lbl_audio_windows_name_fmt").format(name=windows_name) if windows_name else "")
+
+    # -- interaction ---------------------------------------------------
+    def _on_pick(self, event=None):
+        sel = self.listbox.curselection()
+        if not sel:
+            return
+        self._selected_id = self._row_ids[sel[0]]
+        self._rebound_from = None
+        self._fill_name_from(self._selected_id)
+        self._update_rebind()
+        if self._on_change:
+            self._on_change()
+
+    def _use_rebind(self):
+        if not self._rebind:
+            return
+        old_id, new_id, _name = self._rebind
+        old_nick = self.nicknames.get(old_id, "").strip() or self.name_var.get().strip()
+        self._rebound_from = old_id
+        self._selected_id = new_id
+        self._rebind = None
+        self._rebind_row.pack_forget()
+        self._refill()
+        windows_name = self._windows_name(new_id)
+        self.name_var.set(old_nick or windows_name)
+        self.win_name_lbl.configure(text=i18n.t("lbl_audio_windows_name_fmt").format(name=windows_name))
+        if self._on_change:
+            self._on_change()
+
+    # -- results -------------------------------------------------------
+    def selected(self):
+        """(endpoint_id or None, that device's Windows name)."""
+        if not self._selected_id:
+            return None, ""
+        return self._selected_id, self._windows_name(self._selected_id)
+
+    def name_text(self):
+        return self.name_var.get().strip()
+
+    def commit_nickname(self, nicknames, endpoint_id, windows_name):
+        """Save the Device name box as this device's nickname - or forget any
+        nickname if it was left blank or matches Windows' own name. A device
+        adopted through "Use it" also takes over its old id's nickname."""
+        if self._rebound_from and self._rebound_from != endpoint_id:
+            nicknames.pop(self._rebound_from, None)
+        text = self.name_text()
+        if text and text != windows_name:
+            nicknames[endpoint_id] = text
+        else:
+            nicknames.pop(endpoint_id, None)
+
+
+class MacroEditorDialog(tk.Toplevel):
+    """One mute macro: which microphone, what it does, and an optional global
+    hotkey (recorded by pressing the keys - see app/hotkeys.py)."""
+
+    def __init__(self, parent, macro, audio_nicknames):
+        super().__init__(parent)
+        self.withdraw()
+        self.macro = macro
+        self.audio_nicknames = audio_nicknames
+        self.result = None
+        self.title(i18n.t_piqad("dlg_title_macro"))
+        self.resizable(False, False)
+        theme.apply_window_theme(self, getattr(parent, "dark_mode", False))
+
+        frm = ttk.Frame(self)
+        frm.pack(padx=14, pady=12, fill="both")
+
+        label_row = ttk.Frame(frm)
+        label_row.pack(fill="x")
+        ttk.Label(label_row, text=i18n.t_piqad("lbl_label")).pack(side="left")
+        self.label_entry = ttk.Entry(label_row, width=30)
+        self.label_entry.insert(0, macro.label)
+        self.label_entry.pack(side="left", padx=6)
+
+        self.picker = AudioPickerFrame(frm, audio_nicknames, macro.endpoint_id, macro.endpoint_name)
+        self.picker.pack(fill="x", pady=(10, 0))
+
+        action_row = ttk.Frame(frm)
+        action_row.pack(fill="x", pady=(10, 0))
+        ttk.Label(action_row, text=i18n.t_piqad("lbl_macro_action")).pack(side="left")
+        self.action_keys = list(config_mod.MACRO_ACTION_OPTIONS.keys())
+        self.action_combo = ttk.Combobox(action_row, values=[i18n.t_piqad(f"macroaction_{k}") for k in self.action_keys], state="readonly", width=24)
+        self.action_combo.current(self.action_keys.index(macro.action) if macro.action in self.action_keys else 0)
+        self.action_combo.pack(side="left", padx=6)
+
+        hotkey_row = ttk.Frame(frm)
+        hotkey_row.pack(fill="x", pady=(10, 0))
+        ttk.Label(hotkey_row, text=i18n.t_piqad("lbl_macro_hotkey")).pack(side="left")
+        self.hotkey_var = tk.StringVar(value=macro.hotkey or "")
+        self.hotkey_entry = ttk.Entry(hotkey_row, textvariable=self.hotkey_var, state="readonly", width=28)
+        self.hotkey_entry.pack(side="left", padx=6)
+        self.hotkey_entry.bind("<KeyPress>", self._on_hotkey_key)
+        ttk.Button(hotkey_row, text=i18n.t_piqad("btn_clear"), command=lambda: self.hotkey_var.set("")).pack(side="left")
+        self.hotkey_status = tk.StringVar(value="")
+        ttk.Label(frm, text=i18n.t_piqad("hint_hotkey_record"), foreground="#666", wraplength=460, justify="left").pack(anchor="w", pady=(2, 0))
+        ttk.Label(frm, textvariable=self.hotkey_status, foreground="#cc4444").pack(anchor="w")
+
+        btns = ttk.Frame(frm)
+        btns.pack(anchor="e", pady=(12, 0))
+        ttk.Button(btns, text=i18n.t_piqad("btn_cancel"), command=self.destroy).pack(side="right", padx=(6, 0))
+        ttk.Button(btns, text=i18n.t_piqad("btn_save"), command=self._on_save).pack(side="right")
+
+        self.grab_set()
+        self.transient(parent)
+        theme.apply_window_theme(self, getattr(parent, "dark_mode", False))
+        place_dialog(self)
+        self.deiconify()
+
+    def _on_hotkey_key(self, event):
+        vk = event.keycode  # on Windows, Tk's keycode is the virtual-key code
+        if vk in hotkeys.MODIFIER_VKS:
+            return "break"
+        mods = hotkeys.current_modifiers()
+        if event.keysym in ("Tab", "Escape") and not mods:
+            return None  # let normal focus movement / dialog behaviour through
+        text = hotkeys.format_hotkey(mods, vk)
+        if text is None:
+            self.hotkey_status.set(i18n.t("err_hotkey_key"))
+        elif not mods and not hotkeys.allows_bare(vk):
+            self.hotkey_status.set(i18n.t("err_hotkey_bare"))
+        else:
+            self.hotkey_var.set(text)
+            self.hotkey_status.set("")
+        return "break"
+
+    def _on_save(self):
+        endpoint_id, windows_name = self.picker.selected()
+        if not endpoint_id:
+            messagebox.showerror(i18n.t("err_pick_audio_title"), i18n.t("msg_macro_needs_device"), parent=self)
+            return
+        label = self.label_entry.get().strip() or self.picker.name_text() or windows_name
+        macro = config_mod.MacroItem(
+            id=self.macro.id, label=label, endpoint_id=endpoint_id, endpoint_name=windows_name,
+            action=self.action_keys[self.action_combo.current()],
+            hotkey=self.hotkey_var.get().strip() or None,
+        )
+        self.picker.commit_nickname(self.audio_nicknames, endpoint_id, windows_name)
+        self.result = macro
+        self.destroy()
+
+
+class MacrosDialog(tk.Toplevel):
+    """The list of mute macros plus the address of the big-button page. Every
+    change is saved immediately and the global hotkeys are re-registered."""
+
+    _HOTKEY_REASONS = {
+        "already in use by another program": "hotkey_reason_in_use",
+        "not a valid key combination": "hotkey_reason_invalid",
+    }
+
+    def __init__(self, main):
+        super().__init__(main)
+        self.withdraw()
+        self.main = main
+        self.title(i18n.t_piqad("dlg_title_macros"))
+        self.resizable(False, False)
+        theme.apply_window_theme(self, getattr(main, "dark_mode", False))
+
+        frm = ttk.Frame(self)
+        frm.pack(padx=14, pady=12, fill="both")
+
+        self.tree = ttk.Treeview(frm, columns=("label", "device", "action", "hotkey"), show="headings", height=6)
+        for col, key, width in (("label", "col_macro_label", 130), ("device", "col_macro_device", 200), ("action", "col_macro_action", 120), ("hotkey", "col_macro_hotkey", 150)):
+            self.tree.heading(col, text=i18n.t_piqad(key))
+            self.tree.column(col, width=width)
+        self.tree.pack(fill="x")
+        self.tree.bind("<Double-1>", lambda e: self._edit())
+
+        btns = ttk.Frame(frm)
+        btns.pack(fill="x", pady=(6, 0))
+        ttk.Button(btns, text=i18n.t_piqad("add_btn"), command=self._add).pack(side="left")
+        ttk.Button(btns, text=i18n.t_piqad("btn_edit"), command=self._edit).pack(side="left", padx=4)
+        ttk.Button(btns, text=i18n.t_piqad("btn_remove"), command=self._remove).pack(side="left")
+        ttk.Button(btns, text=i18n.t_piqad("btn_test"), command=self._test).pack(side="left", padx=(12, 0))
+
+        self.conflict_var = tk.StringVar(value="")
+        ttk.Label(frm, textvariable=self.conflict_var, foreground="#cc4444", wraplength=560, justify="left").pack(anchor="w", pady=(8, 0))
+
+        ttk.Separator(frm, orient="horizontal").pack(fill="x", pady=10)
+        url_row = ttk.Frame(frm)
+        url_row.pack(fill="x")
+        ttk.Label(url_row, text=i18n.t_piqad("lbl_macro_page")).pack(side="left")
+        self.url_var = tk.StringVar(value=f"http://127.0.0.1:{main.server.port or main.cfg.port}/macros")
+        ttk.Entry(url_row, textvariable=self.url_var, state="readonly", width=38).pack(side="left", padx=6)
+        ttk.Button(url_row, text=i18n.t_piqad("btn_copy_url"), command=self._copy_url).pack(side="left")
+        ttk.Button(url_row, text=i18n.t_piqad("btn_open_browser"), command=lambda: webbrowser.open(self.url_var.get())).pack(side="left", padx=4)
+        ttk.Label(frm, text=i18n.t_piqad("hint_macro_page"), foreground="#666", wraplength=560, justify="left").pack(anchor="w", pady=(6, 0))
+
+        ttk.Button(frm, text=i18n.t_piqad("about_close"), command=self.destroy).pack(anchor="e", pady=(10, 0))
+
+        self._refresh()
+        self.protocol("WM_DELETE_WINDOW", self.destroy)
+        self.grab_set()
+        self.transient(main)
+        theme.apply_window_theme(self, getattr(main, "dark_mode", False))
+        place_dialog(self)
+        self.deiconify()
+
+    def _device_text(self, m):
+        return audio_mod.display_name(m.endpoint_id or "", m.endpoint_name, self.main.cfg.audio_nicknames)
+
+    def _refresh(self):
+        self.tree.delete(*self.tree.get_children())
+        for m in self.main.cfg.macros:
+            self.tree.insert("", "end", iid=m.id, values=(
+                m.label, self._device_text(m), i18n.t(f"macroaction_{m.action}"), m.hotkey or "-",
+            ))
+        lines = []
+        labels = {m.id: m.label for m in self.main.cfg.macros}
+        for mid, reason in self.main.hotkey_manager.failed.items():
+            hk = next((m.hotkey for m in self.main.cfg.macros if m.id == mid), "")
+            lines.append(i18n.t("msg_hotkey_conflict_fmt").format(
+                label=labels.get(mid, mid), hotkey=hk, reason=i18n.t(self._HOTKEY_REASONS.get(reason, "hotkey_reason_invalid")),
+            ))
+        self.conflict_var.set("\n".join(lines))
+
+    def _changed(self):
+        config_mod.save(self.main.cfg)
+        self.main._rebind_hotkeys()
+        self._refresh()
+
+    def _selected(self):
+        sel = self.tree.selection()
+        return next((m for m in self.main.cfg.macros if m.id == sel[0]), None) if sel else None
+
+    def _add(self):
+        dlg = MacroEditorDialog(self, config_mod.MacroItem(id=config_mod.new_macro_id(), label=""), self.main.cfg.audio_nicknames)
+        self.wait_window(dlg)
+        if dlg.result:
+            self.main.cfg.macros.append(dlg.result)
+            self._changed()
+
+    def _edit(self):
+        macro = self._selected()
+        if macro is None:
+            return
+        dlg = MacroEditorDialog(self, macro, self.main.cfg.audio_nicknames)
+        self.wait_window(dlg)
+        if dlg.result:
+            idx = next(i for i, m in enumerate(self.main.cfg.macros) if m.id == macro.id)
+            self.main.cfg.macros[idx] = dlg.result
+            self._changed()
+
+    def _remove(self):
+        macro = self._selected()
+        if macro is None:
+            return
+        if messagebox.askyesno(i18n.t("dlg_title_macros"), i18n.t("msg_remove_body_fmt").format(label=macro.label), parent=self):
+            self.main.cfg.macros = [m for m in self.main.cfg.macros if m.id != macro.id]
+            self._changed()
+
+    def _test(self):
+        macro = self._selected()
+        if macro is None or not macro.endpoint_id:
+            return
+        result = self.main.audio_monitor.set_mute(macro.endpoint_id, macro.action)
+        if not result.get("ok"):
+            messagebox.showwarning(i18n.t("dlg_title_macros"), i18n.t("msg_macro_press_failed_fmt").format(error=result.get("error", "")), parent=self)
+
+    def _copy_url(self):
+        self.clipboard_clear()
+        self.clipboard_append(self.url_var.get())
+
+
 class DeviceSelectorMixin:
     """Shared 'pick a live SteamVR device, or type a serial manually' UI.
 
@@ -518,14 +1020,22 @@ class MediaPickerMixin:
     Requires self._pending_media (dict kind -> chosen path or None)."""
 
     def _media_row(self, parent, row, text, kind, current_rel, sound=False, anim_default=None, anim_change_cb=None):
+        """Returns (label_widget, anim_combo, anim_keys, control_widgets) -
+        control_widgets is [choose_btn] or [choose_btn, test_btn], for
+        callers that need to enable/disable this row as a group (e.g. gating
+        the Charging section on its own checkbox)."""
         ttk.Label(parent, text=text).grid(row=row, column=0, sticky="w", padx=6, pady=3)
         current_full = config_mod.resolve_media(current_rel)
         display = os.path.basename(current_full) if current_full else "(default)"
         lbl = ttk.Label(parent, text=display, width=28)
         lbl.grid(row=row, column=1, sticky="w", padx=6)
-        ttk.Button(parent, text=i18n.t_piqad("btn_choose"), command=lambda: self._choose_media(kind, lbl, sound)).grid(row=row, column=2, padx=4)
+        choose_btn = ttk.Button(parent, text=i18n.t_piqad("btn_choose"), command=lambda: self._choose_media(kind, lbl, sound))
+        choose_btn.grid(row=row, column=2, padx=4)
+        control_widgets = [choose_btn]
         if sound:
-            ttk.Button(parent, text=i18n.t_piqad("btn_test"), command=lambda: self._test_sound(kind, current_rel)).grid(row=row, column=3, padx=4)
+            test_btn = ttk.Button(parent, text=i18n.t_piqad("btn_test"), command=lambda: self._test_sound(kind, current_rel))
+            test_btn.grid(row=row, column=3, padx=4)
+            control_widgets.append(test_btn)
 
         anim_combo = anim_keys = None
         if anim_default is not None:
@@ -538,7 +1048,7 @@ class MediaPickerMixin:
             if anim_change_cb:
                 anim_combo.bind("<<ComboboxSelected>>", lambda e: anim_change_cb())
 
-        return lbl, anim_combo, anim_keys
+        return lbl, anim_combo, anim_keys, control_widgets
 
     def _choose_media(self, kind, label_widget, sound):
         types = SOUND_FILETYPES if sound else IMAGE_FILETYPES
@@ -747,6 +1257,75 @@ class PreviewMixin:
             self.preview_state.clear()
 
 
+def _work_area(widget):
+    """(left, top, right, bottom) of the usable screen area - taskbar
+    excluded - on whichever monitor `widget` is on."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class MONITORINFO(ctypes.Structure):
+            _fields_ = [("cbSize", wintypes.DWORD), ("rcMonitor", wintypes.RECT),
+                        ("rcWork", wintypes.RECT), ("dwFlags", wintypes.DWORD)]
+
+        user32 = ctypes.windll.user32
+        user32.MonitorFromWindow.argtypes = [wintypes.HWND, wintypes.DWORD]
+        user32.MonitorFromWindow.restype = ctypes.c_void_p
+        user32.GetMonitorInfoW.argtypes = [ctypes.c_void_p, ctypes.POINTER(MONITORINFO)]
+        hmon = user32.MonitorFromWindow(widget.winfo_toplevel().winfo_id(), 2)  # MONITOR_DEFAULTTONEAREST
+        info = MONITORINFO()
+        info.cbSize = ctypes.sizeof(MONITORINFO)
+        if hmon and user32.GetMonitorInfoW(hmon, ctypes.byref(info)):
+            r = info.rcWork
+            return r.left, r.top, r.right, r.bottom
+    except Exception:
+        pass
+    return 0, 0, widget.winfo_screenwidth(), widget.winfo_screenheight() - 60
+
+
+def _decoration_height():
+    """Title bar plus top and bottom window borders - geometry()'s position
+    is for the outer frame while its size is for the inside."""
+    try:
+        import ctypes
+        gm = ctypes.windll.user32.GetSystemMetrics
+        return gm(4) + 2 * (gm(33) + gm(92))  # SM_CYCAPTION + 2 * (SM_CYSIZEFRAME + SM_CXPADDEDBORDER)
+    except Exception:
+        return 40
+
+
+def max_dialog_height(win):
+    """Tallest a dialog can be and still fit on screen, title bar included."""
+    _, top, _, bottom = _work_area(win.master)
+    return max(300, bottom - top - _decoration_height() - 12)
+
+
+def place_dialog(win, width=None, height=None):
+    """Centers a dialog over its parent window, then nudges it so the whole
+    window - title bar and Save/Cancel - stays inside the usable screen area.
+    Without this Windows drops a tall dialog wherever it likes, typically low
+    enough that the bottom runs off the screen. Pass width/height to size it
+    too; leave them out to position only and let it keep its natural size."""
+    parent = win.master
+    left, top, right, bottom = _work_area(parent)
+    deco = _decoration_height()
+    size_it = width is not None
+    if not size_it:
+        win.update_idletasks()
+        width, height = win.winfo_reqwidth(), win.winfo_reqheight()
+    height = min(height, max_dialog_height(win))
+    if parent.winfo_viewable():
+        px, py, pw, ph = parent.winfo_rootx(), parent.winfo_rooty(), parent.winfo_width(), parent.winfo_height()
+    else:
+        px, py, pw, ph = left, top, right - left, bottom - top
+    x = px + (pw - width) // 2
+    y = py + (ph - height - deco) // 2
+    x = max(left, min(x, right - width - 8))
+    y = max(top, min(y, bottom - height - deco - 4))
+    win.geometry(f"{width}x{height}+{x}+{y}" if size_it else f"+{x}+{y}")
+    return height
+
+
 class ScrollableDialogMixin:
     """A dialog body that scrolls internally and caps its own height to the
     screen, so Save/Cancel stay reachable no matter how many customization
@@ -797,9 +1376,7 @@ class ScrollableDialogMixin:
         width = content_w + scrollbar_w + 20
         content_h = inner.winfo_reqheight()
         chrome_h = self._body_btns.winfo_reqheight() + 20  # pady top+bottom on the button bar
-        screen_h = self.winfo_screenheight()
-        max_total_h = max(300, screen_h - 100)
-        total_h = min(content_h + chrome_h, max_total_h)
+        total_h = min(content_h + chrome_h, max_dialog_height(self))
         # A plain geometry() call isn't enough here: since the dialog is
         # resizable(False, False), Tk keeps re-snapping it back to its
         # natural pack-computed request size (dominated by the Canvas's tiny
@@ -809,7 +1386,106 @@ class ScrollableDialogMixin:
         # min/maxsize to the same value locks it for real.
         self.minsize(width, total_h)
         self.maxsize(width, total_h)
-        self.geometry(f"{width}x{total_h}")
+        place_dialog(self, width, total_h)
+
+
+class SyncGroupMixin:
+    """Shared 'Sync Group' UI (Device items only) - a named set of items that
+    should only ever appear together, each keeping its own picture/label/
+    animation, gated on every member being "ready" (all connected, or all
+    connected and charged past a threshold). For VR accessories only used
+    for special occasions, so they pop in as a set instead of trickling in
+    individually as each happens to connect. Callers must set self.item and
+    self.sync_groups (the shared list[SyncGroup]) before calling
+    _build_sync_frame - mirrors NudgeGroupMixin's create/join-by-name UI."""
+
+    def _find_sync_group(self, group_id):
+        if not group_id:
+            return None
+        return next((g for g in self.sync_groups if g.id == group_id), None)
+
+    def _build_sync_frame(self, parent):
+        frame = ttk.LabelFrame(parent, text=i18n.t_piqad("frame_sync_group"))
+
+        current_group = self._find_sync_group(self.item.sync_group_id)
+
+        self.sync_enabled_var = tk.BooleanVar(value=current_group is not None)
+        ttk.Checkbutton(
+            frame, text=i18n.t_piqad("chk_sync_enabled"), variable=self.sync_enabled_var,
+            command=self._update_sync_controls_state,
+        ).grid(row=0, column=0, columnspan=4, sticky="w", padx=6, pady=(6, 0))
+
+        ttk.Label(frame, text=i18n.t_piqad("lbl_sync_group")).grid(row=1, column=0, sticky="w", padx=6, pady=3)
+        group_names = [g.name for g in self.sync_groups]
+        self.sync_group_combo = ttk.Combobox(frame, values=group_names, width=22)
+        self.sync_group_combo.set(current_group.name if current_group else "")
+        self.sync_group_combo.grid(row=1, column=1, columnspan=3, sticky="w", padx=6, pady=3)
+        self.sync_group_combo.bind("<<ComboboxSelected>>", self._on_sync_group_picked)
+
+        ttk.Label(frame, text=i18n.t_piqad("hint_sync_group"), foreground="#666", wraplength=460, justify="left").grid(
+            row=2, column=0, columnspan=4, sticky="w", padx=6
+        )
+
+        ttk.Label(frame, text=i18n.t_piqad("lbl_sync_ready_mode")).grid(row=3, column=0, sticky="w", padx=6, pady=(3, 6))
+        self.sync_ready_mode_keys = list(config_mod.SYNC_READY_MODE_OPTIONS.keys())
+        self.sync_ready_mode_combo = ttk.Combobox(
+            frame, values=[i18n.t_piqad(f"syncready_{k}") for k in self.sync_ready_mode_keys], state="readonly", width=24,
+        )
+        start_mode = current_group.ready_mode if current_group else "all_connected"
+        start_mode = start_mode if start_mode in self.sync_ready_mode_keys else "all_connected"
+        self.sync_ready_mode_combo.current(self.sync_ready_mode_keys.index(start_mode))
+        self.sync_ready_mode_combo.grid(row=3, column=1, sticky="w", padx=6, pady=(3, 6))
+
+        ttk.Label(frame, text=i18n.t_piqad("lbl_sync_ready_threshold")).grid(row=3, column=2, sticky="w", padx=6)
+        self.sync_ready_threshold_var = tk.IntVar(value=current_group.ready_threshold_pct if current_group else 95)
+        self.sync_ready_threshold_spin = ttk.Spinbox(frame, from_=1, to=100, textvariable=self.sync_ready_threshold_var, width=5)
+        self.sync_ready_threshold_spin.grid(row=3, column=3, sticky="w", padx=6)
+
+        self._update_sync_controls_state()
+        return frame
+
+    def _update_sync_controls_state(self):
+        on = self.sync_enabled_var.get()
+        self.sync_group_combo.configure(state="normal" if on else "disabled")
+        self.sync_ready_mode_combo.configure(state="readonly" if on else "disabled")
+        self.sync_ready_threshold_spin.configure(state="normal" if on else "disabled")
+
+    def _on_sync_group_picked(self, event=None):
+        """Picking an *existing* group from the dropdown jumps this item's
+        ready mode/threshold fields to match it - no manual re-entry."""
+        name = self.sync_group_combo.get().strip()
+        group = next((g for g in self.sync_groups if g.name == name), None)
+        if not group:
+            return
+        self.sync_enabled_var.set(True)
+        self._update_sync_controls_state()
+        if group.ready_mode in self.sync_ready_mode_keys:
+            self.sync_ready_mode_combo.current(self.sync_ready_mode_keys.index(group.ready_mode))
+        self.sync_ready_threshold_var.set(group.ready_threshold_pct)
+
+    def _resolve_sync_group(self):
+        """Type a new name -> creates a group. Pick/type an existing name ->
+        updates that shared group's ready mode/threshold, affecting every
+        other item using it too. Checkbox unchecked -> no group, regardless
+        of what's typed in the field."""
+        if not self.sync_enabled_var.get():
+            return None
+        name = self.sync_group_combo.get().strip()
+        if not name:
+            return None
+        ready_mode = self.sync_ready_mode_keys[self.sync_ready_mode_combo.current()]
+        threshold = self.sync_ready_threshold_var.get()
+        existing = next((g for g in self.sync_groups if g.name == name), None)
+        if existing:
+            existing.ready_mode = ready_mode
+            existing.ready_threshold_pct = threshold
+            return existing.id
+        new_group = config_mod.SyncGroup(
+            id=config_mod.new_sync_group_id(), name=name,
+            ready_mode=ready_mode, ready_threshold_pct=threshold,
+        )
+        self.sync_groups.append(new_group)
+        return new_group.id
 
 
 class NudgeGroupMixin:
@@ -916,8 +1592,8 @@ class NudgeGroupMixin:
         return new_group.id
 
 
-class ItemEditorDialog(ScrollableDialogMixin, NudgeGroupMixin, DeviceSelectorMixin, MediaPickerMixin, AnimationPickerMixin, PositionCanvasMixin, PreviewMixin, tk.Toplevel):
-    def __init__(self, parent, vr_monitor: VRMonitor, item: config_mod.OverlayItem, other_items, preview_state=None, nudge_groups=None, exclude_serials=None):
+class ItemEditorDialog(ScrollableDialogMixin, NudgeGroupMixin, SyncGroupMixin, DeviceSelectorMixin, MediaPickerMixin, AnimationPickerMixin, PositionCanvasMixin, PreviewMixin, tk.Toplevel):
+    def __init__(self, parent, vr_monitor: VRMonitor, item: config_mod.OverlayItem, other_items, preview_state=None, nudge_groups=None, exclude_serials=None, sync_groups=None):
         super().__init__(parent)
         self.withdraw()
         self.title(i18n.t("dlg_title_device"))
@@ -928,6 +1604,7 @@ class ItemEditorDialog(ScrollableDialogMixin, NudgeGroupMixin, DeviceSelectorMix
         self._nudge_owner = item
         self.other_items = other_items
         self.nudge_groups = nudge_groups if nudge_groups is not None else []
+        self.sync_groups = sync_groups if sync_groups is not None else []
         self.exclude_serials = exclude_serials
         self.result = None
         self._init_preview(preview_state)
@@ -987,13 +1664,16 @@ class ItemEditorDialog(ScrollableDialogMixin, NudgeGroupMixin, DeviceSelectorMix
         self.nudge_frame = self._build_nudge_frame(inner)
         self.nudge_frame.grid(row=3, column=0, columnspan=2, sticky="ew", **pad)
 
+        sync_frame = self._build_sync_frame(inner)
+        sync_frame.grid(row=4, column=0, columnspan=2, sticky="ew", **pad)
+
         self.label_entry.bind("<KeyRelease>", lambda e: self._push_preview_if_active())
 
         charging_frame = self._build_charging_frame(inner)
-        charging_frame.grid(row=4, column=0, columnspan=2, sticky="ew", **pad)
+        charging_frame.grid(row=5, column=0, columnspan=2, sticky="ew", **pad)
 
         caption_frame = ttk.LabelFrame(inner, text=i18n.t_piqad("frame_caption"))
-        caption_frame.grid(row=5, column=0, columnspan=2, sticky="ew", **pad)
+        caption_frame.grid(row=6, column=0, columnspan=2, sticky="ew", **pad)
 
         gap_row = ttk.Frame(caption_frame)
         gap_row.grid(row=0, column=0, columnspan=6, sticky="w", padx=6, pady=(6, 0))
@@ -1025,12 +1705,12 @@ class ItemEditorDialog(ScrollableDialogMixin, NudgeGroupMixin, DeviceSelectorMix
         )
 
         media = ttk.LabelFrame(inner, text=i18n.t_piqad("frame_media"))
-        media.grid(row=6, column=0, columnspan=2, sticky="ew", **pad)
-        _, self.normal_anim_combo, self.normal_anim_keys = self._media_row(
+        media.grid(row=7, column=0, columnspan=2, sticky="ew", **pad)
+        _, self.normal_anim_combo, self.normal_anim_keys, _ = self._media_row(
             media, 0, i18n.t_piqad("lbl_normal_pic"), "normal", self.item.normal_image,
             anim_default=self.item.normal_pic_animation, anim_change_cb=self._push_preview_if_active,
         )
-        _, self.low_anim_combo, self.low_anim_keys = self._media_row(
+        _, self.low_anim_combo, self.low_anim_keys, _ = self._media_row(
             media, 1, i18n.t_piqad("lbl_low_pic"), "low", self.item.low_image,
             anim_default=self.item.low_pic_animation, anim_change_cb=self._push_preview_if_active,
         )
@@ -1040,7 +1720,7 @@ class ItemEditorDialog(ScrollableDialogMixin, NudgeGroupMixin, DeviceSelectorMix
         start_x = start_group.x_pct if start_group else self.item.x_pct
         start_y = start_group.y_pct if start_group else self.item.y_pct
         pos_frame = self._build_position_frame(inner, self.item.id, start_x, start_y, self.item.width_px)
-        pos_frame.grid(row=7, column=0, columnspan=2, sticky="ew", **pad)
+        pos_frame.grid(row=8, column=0, columnspan=2, sticky="ew", **pad)
 
         self._update_anim_frame_visibility()
         self._cap_dialog_height(inner, vsb)
@@ -1120,32 +1800,42 @@ class ItemEditorDialog(ScrollableDialogMixin, NudgeGroupMixin, DeviceSelectorMix
         frame = ttk.LabelFrame(parent, text=i18n.t_piqad("frame_charging"))
 
         self.show_charging_var = tk.BooleanVar(value=self.item.show_charging_status)
-        ttk.Checkbutton(frame, text=i18n.t_piqad("chk_show_charging"), variable=self.show_charging_var).grid(
-            row=0, column=0, columnspan=6, sticky="w", padx=6, pady=(6, 0)
-        )
-        _, self.charging_anim_combo, self.charging_anim_keys = self._media_row(
+        ttk.Checkbutton(
+            frame, text=i18n.t_piqad("chk_show_charging"), variable=self.show_charging_var,
+            command=self._update_charging_lock,
+        ).grid(row=0, column=0, columnspan=6, sticky="w", padx=6, pady=(6, 0))
+        _, self.charging_anim_combo, self.charging_anim_keys, charging_controls = self._media_row(
             frame, 1, i18n.t_piqad("lbl_charging_pic"), "charging", self.item.charging_image,
             anim_default=self.item.charging_pic_animation,
         )
+        self._charging_lockable = charging_controls + [self.charging_anim_combo]
 
         ttk.Separator(frame, orient="horizontal").grid(row=2, column=0, columnspan=6, sticky="ew", padx=6, pady=6)
 
         self.warn_drain_var = tk.BooleanVar(value=self.item.warn_drain_while_charging)
-        ttk.Checkbutton(frame, text=i18n.t_piqad("chk_warn_drain"), variable=self.warn_drain_var).grid(
-            row=3, column=0, columnspan=6, sticky="w", padx=6
-        )
-        _, self.warn_drain_anim_combo, self.warn_drain_anim_keys = self._media_row(
+        ttk.Checkbutton(
+            frame, text=i18n.t_piqad("chk_warn_drain"), variable=self.warn_drain_var,
+            command=self._update_charging_lock,
+        ).grid(row=3, column=0, columnspan=6, sticky="w", padx=6)
+        _, self.warn_drain_anim_combo, self.warn_drain_anim_keys, warn_pic_controls = self._media_row(
             frame, 4, i18n.t_piqad("lbl_warn_drain_pic"), "warn_drain", self.item.warn_drain_image,
             anim_default=self.item.warn_drain_pic_animation,
         )
-        self._media_row(frame, 5, i18n.t_piqad("lbl_warn_drain_sound"), "warn_drain_sound", self.item.warn_drain_sound, sound=True)
+        _, _, _, warn_sound_controls = self._media_row(
+            frame, 5, i18n.t_piqad("lbl_warn_drain_sound"), "warn_drain_sound", self.item.warn_drain_sound, sound=True,
+        )
 
         cooldown_row = ttk.Frame(frame)
         cooldown_row.grid(row=6, column=0, columnspan=6, sticky="w", padx=6, pady=(2, 6))
         ttk.Label(cooldown_row, text=i18n.t_piqad("lbl_warn_drain_cooldown")).pack(side="left")
         self.warn_drain_cooldown_var = tk.IntVar(value=self.item.warn_drain_sound_cooldown_sec)
-        ttk.Spinbox(cooldown_row, from_=5, to=3600, textvariable=self.warn_drain_cooldown_var, width=6).pack(side="left", padx=(6, 4))
+        self.warn_drain_cooldown_spinbox = ttk.Spinbox(cooldown_row, from_=5, to=3600, textvariable=self.warn_drain_cooldown_var, width=6)
+        self.warn_drain_cooldown_spinbox.pack(side="left", padx=(6, 4))
         ttk.Label(cooldown_row, text=i18n.t_piqad("lbl_duration_seconds")).pack(side="left")
+
+        self._warn_drain_lockable = (
+            warn_pic_controls + [self.warn_drain_anim_combo] + warn_sound_controls + [self.warn_drain_cooldown_spinbox]
+        )
 
         ttk.Separator(frame, orient="horizontal").grid(row=7, column=0, columnspan=6, sticky="ew", padx=6, pady=6)
 
@@ -1155,7 +1845,23 @@ class ItemEditorDialog(ScrollableDialogMixin, NudgeGroupMixin, DeviceSelectorMix
         )
         self.hide_on_charging_chk.grid(row=8, column=0, columnspan=6, sticky="w", padx=6, pady=(0, 6))
 
+        self._update_charging_lock()
         return frame
+
+    def _update_charging_lock(self):
+        """Greys out each sub-section's controls until its own checkbox is
+        ticked, so a first-time user isn't left wondering whether the
+        Charging picture/animation/sound fields need setting up even when
+        they've left the feature off."""
+        charging_on = self.show_charging_var.get()
+        for w in self._charging_lockable:
+            state = "readonly" if isinstance(w, ttk.Combobox) else "normal"
+            w.configure(state=state if charging_on else "disabled")
+
+        warn_on = self.warn_drain_var.get()
+        for w in self._warn_drain_lockable:
+            state = "readonly" if isinstance(w, ttk.Combobox) else "normal"
+            w.configure(state=state if warn_on else "disabled")
 
     def _update_anim_frame_visibility(self):
         if self.mode_var.get() == "low_only":
@@ -1231,6 +1937,7 @@ class ItemEditorDialog(ScrollableDialogMixin, NudgeGroupMixin, DeviceSelectorMix
         serial, device_class_hint = resolved
         label = self.label_entry.get().strip() or serial
         nudge_group_id = self._resolve_nudge_group()
+        sync_group_id = self._resolve_sync_group()
 
         item = config_mod.OverlayItem(
             id=self.item.id,
@@ -1254,6 +1961,7 @@ class ItemEditorDialog(ScrollableDialogMixin, NudgeGroupMixin, DeviceSelectorMix
             enter_animation=self.enter_keys[self.enter_combo.current()],
             exit_animation=self.exit_keys[self.exit_combo.current()],
             nudge_group_id=nudge_group_id,
+            sync_group_id=sync_group_id,
             show_charging_status=self.show_charging_var.get(),
             charging_image=self.item.charging_image,
             charging_pic_animation=self.charging_anim_keys[self.charging_anim_combo.current()],
@@ -1282,7 +1990,7 @@ class ItemEditorDialog(ScrollableDialogMixin, NudgeGroupMixin, DeviceSelectorMix
 
 
 class EffectEditorDialog(ScrollableDialogMixin, NudgeGroupMixin, DeviceSelectorMixin, MediaPickerMixin, AnimationPickerMixin, PositionCanvasMixin, PreviewMixin, tk.Toplevel):
-    def __init__(self, parent, vr_monitor: VRMonitor, effect: config_mod.EffectItem, other_items, preview_state=None, nudge_groups=None, exclude_serials=None):
+    def __init__(self, parent, vr_monitor: VRMonitor, effect: config_mod.EffectItem, other_items, preview_state=None, nudge_groups=None, exclude_serials=None, twitch_connected=False, audio_nicknames=None):
         super().__init__(parent)
         self.withdraw()
         self.title(i18n.t("dlg_title_effect"))
@@ -1294,6 +2002,8 @@ class EffectEditorDialog(ScrollableDialogMixin, NudgeGroupMixin, DeviceSelectorM
         self.other_items = other_items
         self.nudge_groups = nudge_groups if nudge_groups is not None else []
         self.exclude_serials = exclude_serials
+        self.twitch_connected = twitch_connected
+        self.audio_nicknames = audio_nicknames if audio_nicknames is not None else {}
         self.result = None
         self._init_preview(preview_state)
         self._pending_media = {"picture": None, "sound": None}
@@ -1336,15 +2046,26 @@ class EffectEditorDialog(ScrollableDialogMixin, NudgeGroupMixin, DeviceSelectorM
         self.label_entry.grid(row=0, column=1, sticky="w", padx=6, pady=4)
 
         ttk.Label(basics, text=i18n.t_piqad("lbl_trigger")).grid(row=1, column=0, sticky="w", padx=6)
-        self.trigger_keys = list(config_mod.TRIGGER_OPTIONS.keys())
-        self.trigger_combo = ttk.Combobox(basics, values=[i18n.t(f"trigger_{k}") for k in self.trigger_keys], state="readonly", width=26)
+        self.trigger_keys = []
+        self.trigger_combo = ttk.Combobox(basics, values=[], state="readonly", width=26)
         self.trigger_combo.grid(row=1, column=1, sticky="w", padx=6)
-        self.trigger_combo.current(self.trigger_keys.index(self.effect.trigger) if self.effect.trigger in self.trigger_keys else 0)
+        self.trigger_combo.bind("<<ComboboxSelected>>", lambda e: self._update_trigger_extras())
 
-        ttk.Label(basics, text=i18n.t_piqad("lbl_battery_threshold")).grid(row=2, column=0, sticky="w", padx=6)
+        self._threshold_widgets = [ttk.Label(basics, text=i18n.t_piqad("lbl_battery_threshold"))]
+        self._threshold_widgets[0].grid(row=2, column=0, sticky="w", padx=6)
         self.threshold_var = tk.IntVar(value=self.effect.low_threshold_pct)
-        ttk.Spinbox(basics, from_=1, to=99, textvariable=self.threshold_var, width=6).grid(row=2, column=1, sticky="w", padx=6)
-        ttk.Label(basics, text=i18n.t_piqad("hint_threshold_effect"), foreground="#666").grid(row=2, column=2, sticky="w")
+        threshold_spin = ttk.Spinbox(basics, from_=1, to=99, textvariable=self.threshold_var, width=6)
+        threshold_spin.grid(row=2, column=1, sticky="w", padx=6)
+        threshold_hint = ttk.Label(basics, text=i18n.t_piqad("hint_threshold_effect"), foreground="#666")
+        threshold_hint.grid(row=2, column=2, sticky="w")
+        self._threshold_widgets += [threshold_spin, threshold_hint]
+
+        self._silent_widgets = [ttk.Label(basics, text=i18n.t_piqad("lbl_audio_silent_for"))]
+        self._silent_widgets[0].grid(row=3, column=0, sticky="w", padx=6)
+        self.audio_silent_var = tk.IntVar(value=self.effect.audio_silent_sec)
+        silent_spin = ttk.Spinbox(basics, from_=3, to=3600, textvariable=self.audio_silent_var, width=6)
+        silent_spin.grid(row=3, column=1, sticky="w", padx=6)
+        self._silent_widgets.append(silent_spin)
 
         self.anim_frame = self._build_animation_frame(inner, i18n.t_piqad("frame_pop_animation_effect"), self.effect.enter_animation, self.effect.exit_animation)
         self.anim_frame.grid(row=2, column=0, columnspan=2, sticky="ew", **pad)
@@ -1375,16 +2096,39 @@ class EffectEditorDialog(ScrollableDialogMixin, NudgeGroupMixin, DeviceSelectorM
         ).pack(side="left", padx=(6, 0))
         self._update_duration_visibility()
 
+        chat_frame = ttk.LabelFrame(inner, text=i18n.t_piqad("frame_chat_command"))
+        chat_frame.grid(row=5, column=0, columnspan=2, sticky="ew", **pad)
+        ttk.Label(chat_frame, text=i18n.t_piqad("lbl_chat_command")).grid(row=0, column=0, sticky="w", padx=6, pady=(6, 3))
+        self.chat_command_entry = ttk.Entry(chat_frame, width=20)
+        self.chat_command_entry.insert(0, self.effect.chat_command or "")
+        self.chat_command_entry.grid(row=0, column=1, sticky="w", padx=6, pady=(6, 3))
+        ttk.Label(chat_frame, text=i18n.t_piqad("hint_chat_command"), foreground="#666").grid(row=1, column=0, columnspan=2, sticky="w", padx=6)
+        ttk.Label(chat_frame, text=i18n.t_piqad("lbl_chat_permission")).grid(row=2, column=0, sticky="w", padx=6, pady=(4, 6))
+        self.chat_permission_keys = list(config_mod.CHAT_PERMISSION_OPTIONS.keys())
+        self.chat_permission_combo = ttk.Combobox(
+            chat_frame, values=[i18n.t_piqad(f"chatperm_{k}") for k in self.chat_permission_keys], state="readonly", width=20,
+        )
+        self.chat_permission_combo.grid(row=2, column=1, sticky="w", padx=6, pady=(4, 6))
+        self.chat_permission_combo.current(
+            self.chat_permission_keys.index(self.effect.chat_permission) if self.effect.chat_permission in self.chat_permission_keys else 0
+        )
+        if not self.twitch_connected:
+            self.chat_command_entry.configure(state="disabled")
+            self.chat_permission_combo.configure(state="disabled")
+            ttk.Label(chat_frame, text=i18n.t_piqad("hint_chat_needs_connect"), foreground="#cc8800").grid(
+                row=3, column=0, columnspan=2, sticky="w", padx=6, pady=(0, 6)
+            )
+
         media = ttk.LabelFrame(inner, text=i18n.t_piqad("frame_media"))
-        media.grid(row=5, column=0, columnspan=2, sticky="ew", **pad)
-        _, self.picture_anim_combo, self.picture_anim_keys = self._media_row(
+        media.grid(row=6, column=0, columnspan=2, sticky="ew", **pad)
+        _, self.picture_anim_combo, self.picture_anim_keys, _ = self._media_row(
             media, 0, i18n.t_piqad("lbl_picture"), "picture", self.effect.picture,
             anim_default=self.effect.picture_animation, anim_change_cb=self._push_preview_if_active,
         )
         self._media_row(media, 1, i18n.t_piqad("lbl_warning_sound"), "sound", self.effect.sound, sound=True)
 
         text_frame = ttk.LabelFrame(inner, text=i18n.t_piqad("frame_caption"))
-        text_frame.grid(row=6, column=0, columnspan=2, sticky="ew", **pad)
+        text_frame.grid(row=7, column=0, columnspan=2, sticky="ew", **pad)
 
         ttk.Label(text_frame, text=i18n.t_piqad("lbl_text")).grid(row=0, column=0, sticky="w", padx=6, pady=3)
         self.text_entry = ttk.Entry(text_frame, width=30)
@@ -1441,7 +2185,7 @@ class EffectEditorDialog(ScrollableDialogMixin, NudgeGroupMixin, DeviceSelectorM
         self.outline_color_btn.grid(row=5, column=3, sticky="w", padx=6)
 
         pos_frame = self._build_position_frame(inner, self.effect.id, self.effect.x_pct, self.effect.y_pct, self.effect.width_px)
-        pos_frame.grid(row=7, column=0, columnspan=2, sticky="ew", **pad)
+        pos_frame.grid(row=8, column=0, columnspan=2, sticky="ew", **pad)
 
         self._update_target_mode_visibility()
         self._cap_dialog_height(inner, vsb)
@@ -1485,6 +2229,11 @@ class EffectEditorDialog(ScrollableDialogMixin, NudgeGroupMixin, DeviceSelectorM
         self.ignore_listbox.bind("<<ListboxSelect>>", lambda e: self._push_preview_if_active())
         self._populate_ignore_listbox(preselect=self.effect.ignore_device_serials)
 
+        self.audio_frame = AudioPickerFrame(
+            frame, self.audio_nicknames, self.effect.audio_endpoint_id, self.effect.audio_name, on_change=self._push_preview_if_active,
+        )
+        self.audio_frame.grid(row=3, column=0, columnspan=2, sticky="ew", padx=6, pady=3)
+
         return frame
 
     def _populate_ignore_listbox(self, preselect):
@@ -1506,12 +2255,34 @@ class EffectEditorDialog(ScrollableDialogMixin, NudgeGroupMixin, DeviceSelectorM
 
     def _update_target_mode_visibility(self):
         mode = self.target_mode_var.get()
-        if mode == "specific":
-            self.device_frame.grid()
-            self.ignore_frame.grid_remove()
-        else:
-            self.device_frame.grid_remove()
-            self.ignore_frame.grid()
+        self.device_frame.grid() if mode == "specific" else self.device_frame.grid_remove()
+        self.ignore_frame.grid() if mode == "all" else self.ignore_frame.grid_remove()
+        self.audio_frame.grid() if mode == "audio" else self.audio_frame.grid_remove()
+        self._refresh_trigger_choices()
+        self._push_preview_if_active()
+
+    def _refresh_trigger_choices(self):
+        """Audio Device targets only offer the microphone triggers, everything
+        else only the SteamVR ones - the two sets don't mix. Keeps the current
+        pick when it's still valid, otherwise falls back to the first option."""
+        audio = self.target_mode_var.get() == "audio"
+        keys = [k for k in config_mod.TRIGGER_OPTIONS if (k in config_mod.AUDIO_TRIGGER_KEYS) == audio]
+        previous = self.trigger_keys[self.trigger_combo.current()] if self.trigger_keys and self.trigger_combo.current() >= 0 else self.effect.trigger
+        self.trigger_keys = keys
+        self.trigger_combo.configure(values=[i18n.t(f"trigger_{k}") for k in keys])
+        self.trigger_combo.current(keys.index(previous) if previous in keys else 0)
+        self._update_trigger_extras()
+
+    def _update_trigger_extras(self):
+        """Show only the settings the chosen trigger actually uses: the
+        battery threshold for battery triggers, the silence length for
+        "Mic Silent For..."."""
+        trigger = self.trigger_keys[self.trigger_combo.current()] if self.trigger_keys else ""
+        show_threshold = trigger in ("battery_low", "battery_normal")
+        for w in self._threshold_widgets:
+            w.grid() if show_threshold else w.grid_remove()
+        for w in self._silent_widgets:
+            w.grid() if trigger == "audio_silent" else w.grid_remove()
         self._push_preview_if_active()
 
     def _on_media_changed(self, kind):
@@ -1530,7 +2301,7 @@ class EffectEditorDialog(ScrollableDialogMixin, NudgeGroupMixin, DeviceSelectorM
             "exit": self.exit_keys[self.exit_combo.current()],
             "low_path": picture_path,
             "picture_animation": self.picture_anim_keys[self.picture_anim_combo.current()],
-            "device_class_hint": self.effect.device_class_hint or "Other",
+            "device_class_hint": "Microphone" if self.target_mode_var.get() == "audio" else (self.effect.device_class_hint or "Other"),
             "text": self.text_entry.get(),
             "text_position": self.text_pos_keys[self.text_pos_combo.current()],
             "text_gap_px": self.text_gap_var.get(),
@@ -1555,12 +2326,23 @@ class EffectEditorDialog(ScrollableDialogMixin, NudgeGroupMixin, DeviceSelectorM
                 return
             serial, device_class_hint = resolved
             ignore_serials = []
+        elif mode == "audio":
+            audio_id, audio_windows_name = self.audio_frame.selected()
+            if not audio_id:
+                messagebox.showerror(i18n.t("err_pick_audio_title"), i18n.t("err_pick_audio_body"), parent=self)
+                return
+            serial = ""
+            device_class_hint = "Microphone"
+            ignore_serials = []
         else:
             serial = ""
             device_class_hint = self.effect.device_class_hint or "Other"
             ignore_serials = self._resolve_ignore_selections()
 
-        default_label = serial if mode == "specific" else i18n.t(f"targetmode_{mode}")
+        if mode == "audio":
+            default_label = self.audio_frame.name_text() or audio_windows_name
+        else:
+            default_label = serial if mode == "specific" else i18n.t(f"targetmode_{mode}")
         label = self.label_entry.get().strip() or default_label
         nudge_group_id = self._resolve_nudge_group()
 
@@ -1570,6 +2352,9 @@ class EffectEditorDialog(ScrollableDialogMixin, NudgeGroupMixin, DeviceSelectorM
             device_serial=serial,
             device_class_hint=device_class_hint,
             target_mode=mode,
+            audio_endpoint_id=audio_id if mode == "audio" else None,
+            audio_name=audio_windows_name if mode == "audio" else "",
+            audio_silent_sec=self.audio_silent_var.get(),
             ignore_device_serials=ignore_serials,
             x_pct=self.x_pct,
             y_pct=self.y_pct,
@@ -1585,6 +2370,8 @@ class EffectEditorDialog(ScrollableDialogMixin, NudgeGroupMixin, DeviceSelectorM
             nudge_group_id=nudge_group_id,
             duration_mode=self.duration_mode_var.get(),
             duration_sec=self.duration_sec_var.get(),
+            chat_command=self.chat_command_entry.get().strip() or None,
+            chat_permission=self.chat_permission_keys[self.chat_permission_combo.current()],
             text=self.text_entry.get(),
             text_position=self.text_pos_keys[self.text_pos_combo.current()],
             text_gap_px=self.text_gap_var.get(),
@@ -1602,6 +2389,9 @@ class EffectEditorDialog(ScrollableDialogMixin, NudgeGroupMixin, DeviceSelectorM
             if picked:
                 rel = config_mod.import_media(effect.id, picked, kind)
                 setattr(effect, attr, rel)
+
+        if mode == "audio":
+            self.audio_frame.commit_nickname(self.audio_nicknames, audio_id, audio_windows_name)
 
         self.result = effect
         self._stop_preview()
@@ -1626,7 +2416,13 @@ class MainWindow(tk.Tk):
         bundled_icons.ensure_device_icons()
         self.vr_monitor = VRMonitor(poll_interval_sec=self.cfg.poll_interval_sec)
         self.vr_monitor.start()
-        self.server = ServerController(get_config=lambda: self.cfg, vr_monitor=self.vr_monitor)
+        self.twitch_monitor = TwitchMonitor(get_config=lambda: self.cfg)
+        self.twitch_monitor.start()
+        self.audio_monitor = AudioMonitor(get_config=lambda: self.cfg)
+        self.audio_monitor.start()
+        self.hotkey_manager = HotkeyManager(self._on_hotkey)
+        self._rebind_asked = set()
+        self.server = ServerController(get_config=lambda: self.cfg, vr_monitor=self.vr_monitor, twitch_monitor=self.twitch_monitor, audio_monitor=self.audio_monitor)
         self._port_conflict = not self.server.start()
         self._port_flash_job = None
         self._port_tooltip = None
@@ -1642,6 +2438,8 @@ class MainWindow(tk.Tk):
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self._refresh_url()
         self.deiconify()
+        self._rebind_hotkeys()
+        self.after(5000, self._check_audio_rebind)
 
         if not self.cfg.dismissed_battery_notice:
             self.after(200, self._show_battery_notice)
@@ -1732,6 +2530,10 @@ class MainWindow(tk.Tk):
         right_box = ttk.Frame(top)
         right_box.pack(side="right")
         self.lang_combo, self._lang_keys = _build_language_combo(right_box, self._on_language_change)
+        ttk.Button(right_box, text=i18n.t_piqad("btn_macros"), command=self._open_macros).pack(side="left", padx=(0, 4))
+        self.twitch_btn = ttk.Button(right_box, command=self._on_twitch_button)
+        self.twitch_btn.pack(side="left", padx=(0, 4))
+        self._refresh_twitch_button()
         ttk.Button(right_box, text=i18n.t_piqad("about_btn"), command=self._show_about).pack(side="left")
 
         server_frame = ttk.Frame(self)
@@ -1803,6 +2605,88 @@ class MainWindow(tk.Tk):
 
     def _show_about(self):
         AboutDialog(self)
+
+    # -- mute macros, hotkeys, moved-microphone detection ---------------
+    def _open_macros(self):
+        if not self.cfg.macro_token:
+            self.cfg.macro_token = config_mod.new_macro_token()
+            config_mod.save(self.cfg)
+        MacrosDialog(self)
+
+    def _rebind_hotkeys(self):
+        self.hotkey_manager.set_bindings({m.id: m.hotkey for m in self.cfg.macros if m.hotkey and m.endpoint_id})
+
+    def _on_hotkey(self, macro_id):
+        """Runs on the hotkey thread; set_mute waits for the audio monitor."""
+        macro = next((m for m in self.cfg.macros if m.id == macro_id), None)
+        if macro is not None and macro.endpoint_id:
+            self.audio_monitor.set_mute(macro.endpoint_id, macro.action)
+
+    def _check_audio_rebind(self):
+        """Every few seconds: if a saved microphone is gone but exactly one
+        same-named one just appeared, the receiver was moved to another USB
+        port (Windows issues a new device id) - offer to switch every Effect
+        and macro over, once per pair per session."""
+        try:
+            if self.state() != "withdrawn" and self.grab_current() is None:
+                saved = {}
+                for ef in self.cfg.effects:
+                    if ef.target_mode == "audio" and ef.audio_endpoint_id:
+                        saved[ef.audio_endpoint_id] = ef.audio_name
+                for m in self.cfg.macros:
+                    if m.endpoint_id:
+                        saved.setdefault(m.endpoint_id, m.endpoint_name)
+                for old_id, new_id, name in audio_mod.find_rebind_candidates(saved) if saved else []:
+                    if (old_id, new_id) in self._rebind_asked:
+                        continue
+                    self._rebind_asked.add((old_id, new_id))
+                    shown = self.cfg.audio_nicknames.get(old_id, "").strip() or name
+                    if messagebox.askyesno(i18n.t("dlg_title_audio_rebind"), i18n.t("msg_audio_rebind_fmt").format(name=shown), parent=self):
+                        self._apply_audio_rebind(old_id, new_id, name)
+        finally:
+            self.after(5000, self._check_audio_rebind)
+
+    def _apply_audio_rebind(self, old_id, new_id, windows_name):
+        for ef in self.cfg.effects:
+            if ef.audio_endpoint_id == old_id:
+                ef.audio_endpoint_id = new_id
+                ef.audio_name = windows_name
+        for m in self.cfg.macros:
+            if m.endpoint_id == old_id:
+                m.endpoint_id = new_id
+                m.endpoint_name = windows_name
+        nick = self.cfg.audio_nicknames.pop(old_id, None)
+        if nick and new_id not in self.cfg.audio_nicknames:
+            self.cfg.audio_nicknames[new_id] = nick
+        config_mod.save(self.cfg)
+        self._refresh_item_tree()
+        self._rebind_hotkeys()
+
+    def _refresh_twitch_button(self):
+        if self.cfg.twitch_connected and self.cfg.twitch_login:
+            self.twitch_btn.configure(text=i18n.t_piqad("btn_twitch_connected_fmt").format(login=self.cfg.twitch_login))
+        else:
+            self.twitch_btn.configure(text=i18n.t_piqad("btn_twitch_connect"))
+
+    def _on_twitch_button(self):
+        if self.cfg.twitch_connected:
+            if messagebox.askyesno(i18n.t_piqad("dlg_title_twitch_disconnect"), i18n.t_piqad("confirm_twitch_disconnect"), parent=self):
+                self.cfg.twitch_connected = False
+                self.cfg.twitch_login = None
+                self.cfg.twitch_access_token = None
+                self.cfg.twitch_refresh_token = None
+                config_mod.save(self.cfg)
+                self._refresh_twitch_button()
+            return
+        TwitchConnectDialog(self, self._on_twitch_connected)
+
+    def _on_twitch_connected(self, login, access_token, refresh_token):
+        self.cfg.twitch_connected = True
+        self.cfg.twitch_login = login
+        self.cfg.twitch_access_token = access_token
+        self.cfg.twitch_refresh_token = refresh_token
+        config_mod.save(self.cfg)
+        self._refresh_twitch_button()
 
     def _resolve_dark_mode(self) -> bool:
         """cfg.theme "light"/"dark" is an explicit user override; "system"
@@ -1916,8 +2800,16 @@ class MainWindow(tk.Tk):
             self.item_tree.insert("", "end", iid=f"dev:{it.id}", values=(i18n.t("type_device"), it.label, it.device_serial, mode, f"{it.low_threshold_pct}%"))
         for ef in self.cfg.effects:
             trig = i18n.t(f"trigger_{ef.trigger}")
-            device_display = ef.device_serial if ef.target_mode == "specific" else i18n.t(f"targetmode_{ef.target_mode}")
-            thresh = f"{ef.low_threshold_pct}%" if ef.trigger in ("battery_low", "battery_normal") else "-"
+            if ef.target_mode == "audio":
+                device_display = audio_mod.display_name(ef.audio_endpoint_id or "", ef.audio_name, self.cfg.audio_nicknames)
+            else:
+                device_display = ef.device_serial if ef.target_mode == "specific" else i18n.t(f"targetmode_{ef.target_mode}")
+            if ef.trigger in ("battery_low", "battery_normal"):
+                thresh = f"{ef.low_threshold_pct}%"
+            elif ef.trigger == "audio_silent":
+                thresh = f"{ef.audio_silent_sec}s"
+            else:
+                thresh = "-"
             self.item_tree.insert("", "end", iid=f"fx:{ef.id}", values=(i18n.t("type_effect"), ef.label, device_display, trig, thresh))
 
     def _all_positionables(self):
@@ -1968,7 +2860,7 @@ class MainWindow(tk.Tk):
 
     def _add_item(self):
         new_item = config_mod.OverlayItem(id=config_mod.new_item_id(), label="", device_serial="")
-        dlg = ItemEditorDialog(self, self.vr_monitor, new_item, self._all_positionables(), preview_state=self.server.preview_state, nudge_groups=self.cfg.nudge_groups, exclude_serials=self._used_device_serials())
+        dlg = ItemEditorDialog(self, self.vr_monitor, new_item, self._all_positionables(), preview_state=self.server.preview_state, nudge_groups=self.cfg.nudge_groups, exclude_serials=self._used_device_serials(), sync_groups=self.cfg.sync_groups)
         self.wait_window(dlg)
         if dlg.result:
             self.cfg.items.append(dlg.result)
@@ -1977,7 +2869,7 @@ class MainWindow(tk.Tk):
 
     def _add_effect(self):
         new_effect = config_mod.EffectItem(id=config_mod.new_effect_id(), label="", device_serial="")
-        dlg = EffectEditorDialog(self, self.vr_monitor, new_effect, self._all_positionables(), preview_state=self.server.preview_state, nudge_groups=self.cfg.nudge_groups, exclude_serials=self._used_device_serials())
+        dlg = EffectEditorDialog(self, self.vr_monitor, new_effect, self._all_positionables(), preview_state=self.server.preview_state, nudge_groups=self.cfg.nudge_groups, exclude_serials=self._used_device_serials(), twitch_connected=self.cfg.twitch_connected, audio_nicknames=self.cfg.audio_nicknames)
         self.wait_window(dlg)
         if dlg.result:
             self.cfg.effects.append(dlg.result)
@@ -1992,7 +2884,7 @@ class MainWindow(tk.Tk):
         others = [p for p in self._all_positionables() if p.id != obj.id]
         exclude_serials = self._used_device_serials(exclude_id=obj.id)
         if kind == "device":
-            dlg = ItemEditorDialog(self, self.vr_monitor, obj, others, preview_state=self.server.preview_state, nudge_groups=self.cfg.nudge_groups, exclude_serials=exclude_serials)
+            dlg = ItemEditorDialog(self, self.vr_monitor, obj, others, preview_state=self.server.preview_state, nudge_groups=self.cfg.nudge_groups, exclude_serials=exclude_serials, sync_groups=self.cfg.sync_groups)
             self.wait_window(dlg)
             if dlg.result:
                 idx = next(i for i, it in enumerate(self.cfg.items) if it.id == obj.id)
@@ -2000,7 +2892,7 @@ class MainWindow(tk.Tk):
                 config_mod.save(self.cfg)
                 self._refresh_item_tree()
         else:
-            dlg = EffectEditorDialog(self, self.vr_monitor, obj, others, preview_state=self.server.preview_state, nudge_groups=self.cfg.nudge_groups, exclude_serials=exclude_serials)
+            dlg = EffectEditorDialog(self, self.vr_monitor, obj, others, preview_state=self.server.preview_state, nudge_groups=self.cfg.nudge_groups, exclude_serials=exclude_serials, twitch_connected=self.cfg.twitch_connected, audio_nicknames=self.cfg.audio_nicknames)
             self.wait_window(dlg)
             if dlg.result:
                 idx = next(i for i, ef in enumerate(self.cfg.effects) if ef.id == obj.id)
@@ -2096,6 +2988,9 @@ class MainWindow(tk.Tk):
             self._tray_icon = None
         self.server.stop()
         self.vr_monitor.stop()
+        self.twitch_monitor.stop()
+        self.hotkey_manager.stop()
+        self.audio_monitor.stop()
         self.destroy()
 
 
