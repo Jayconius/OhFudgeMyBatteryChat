@@ -1,13 +1,15 @@
-"""Finding, launching and - only when the user asks - downloading the Oh
-Fudge VR Macro App (OhFudgeVRMacroApp.exe), the small borderless window of big
-mute buttons.
+"""Finding, launching and - only when the user asks - downloading the small
+separate programs that live beside this app: the Oh Fudge VR Macro App
+(OhFudgeVRMacroApp.exe, a borderless window of big mute buttons) and the Demo
+Simulator (OhFudgeMyBatteryChatSimulator.exe).
 
-The download is the app's only file download and happens only after the user
+A download is the app's only file download and happens only after the user
 clicks Yes on a prompt. It reads GitHub's public release list
-(api.github.com), takes the newest `macros-v*` release, downloads that
-release's exe over HTTPS from github.com, and refuses to keep it unless its
-SHA-256 matches the checksum GitHub published for that file. It is saved next to
-this program, so it finds the same Data folder without any setup.
+(api.github.com), takes the newest release whose tag starts with the tool's
+prefix, downloads that release's exe over HTTPS from github.com, and refuses
+to keep it unless its SHA-256 matches the checksum GitHub published for that
+file. It is saved next to this program, so the tool finds the same Data
+folder without any setup.
 """
 import hashlib
 import json
@@ -17,18 +19,30 @@ import subprocess
 import sys
 import urllib.parse
 import urllib.request
+from dataclasses import dataclass
 
 from . import paths
 
 REPO = "Jayconius/OhFudgeMyBatteryChat"
-EXE_NAME = "OhFudgeVRMacroApp.exe"
-TAG_PREFIX = "macros-v"  # its own release line, like the Simulator's "simulator-v"
 RELEASES_API = f"https://api.github.com/repos/{REPO}/releases?per_page=50"
 RELEASES_PAGE = f"https://github.com/{REPO}/releases"
 ALLOWED_DOWNLOAD_HOSTS = ("github.com", "githubusercontent.com")  # the host itself or any subdomain of these
 MAX_BYTES = 200 * 1024 * 1024
 REQUEST_TIMEOUT_SEC = 20
 CHUNK = 64 * 1024
+
+
+@dataclass(frozen=True)
+class Tool:
+    product: str       # name shown to the user
+    exe_name: str      # asset name on the GitHub release, and the file looked for beside this program
+    tag_prefix: str    # its own release line, e.g. "simulator-v"
+    source_script: str  # path (relative to the project root) used when running from source
+    approx_mb: int
+
+
+VR_MACRO_APP = Tool("Oh Fudge VR Macro App", "OhFudgeVRMacroApp.exe", "macros-v", "tools/vr_macro_app.py", 11)
+SIMULATOR = Tool("Demo Simulator", "OhFudgeMyBatteryChatSimulator.exe", "simulator-v", "tools/fake_vr_signal_simulator.py", 10)
 
 
 class CompanionError(Exception):
@@ -40,32 +54,32 @@ class CompanionError(Exception):
         self.detail = detail
 
 
-def exe_path() -> str:
-    return os.path.join(paths.program_dir(), EXE_NAME)
+def exe_path(tool: Tool) -> str:
+    return os.path.join(paths.program_dir(), tool.exe_name)
 
 
-def source_script() -> str:
-    """When running from source (no exe built), the app's script."""
-    return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tools", "vr_macro_app.py")
+def source_script(tool: Tool) -> str:
+    """When running from source (no exe built), the tool's script."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(root, *tool.source_script.split("/"))
 
 
-def is_available() -> bool:
-    if os.path.isfile(exe_path()):
+def is_available(tool: Tool) -> bool:
+    if os.path.isfile(exe_path(tool)):
         return True
-    return not getattr(sys, "frozen", False) and os.path.isfile(source_script())
+    return not getattr(sys, "frozen", False) and os.path.isfile(source_script(tool))
 
 
-def launch() -> None:
-    """Starts the VR Macro App pointed at this app's Data folder, detached so it
-    outlives this window. A second launch just raises the copy already
-    running. Raises OSError if it can't be started."""
+def launch(tool: Tool) -> None:
+    """Starts the tool pointed at this app's Data folder, detached so it
+    outlives this window. Raises OSError if it can't be started."""
     data_dir = paths.app_data_dir()
-    if os.path.isfile(exe_path()):
-        cmd = [exe_path(), "--data-dir", data_dir]
-        cwd = os.path.dirname(exe_path())
+    if os.path.isfile(exe_path(tool)):
+        cmd = [exe_path(tool), "--data-dir", data_dir]
+        cwd = os.path.dirname(exe_path(tool))
     else:
-        cmd = [sys.executable, source_script(), "--data-dir", data_dir]
-        cwd = os.path.dirname(source_script())
+        cmd = [sys.executable, source_script(tool), "--data-dir", data_dir]
+        cwd = os.path.dirname(source_script(tool))
     env = dict(os.environ)
     # A PyInstaller program starting another PyInstaller program would
     # otherwise hand it this one's extraction folder.
@@ -95,15 +109,15 @@ def _host_allowed(url) -> bool:
     return parts.scheme == "https" and any(host == h or host.endswith("." + h) for h in ALLOWED_DOWNLOAD_HOSTS)
 
 
-def find_release():
-    """The newest published macros-v* release as {tag, url, size, sha256}."""
+def find_release(tool: Tool):
+    """The newest published release of the tool as {tag, url, size, sha256}."""
     data = _get_json(RELEASES_API)
     best = None
     for rel in data if isinstance(data, list) else []:
         tag = rel.get("tag_name", "")
-        if not tag.startswith(TAG_PREFIX) or rel.get("draft") or rel.get("prerelease"):
+        if not tag.startswith(tool.tag_prefix) or rel.get("draft") or rel.get("prerelease"):
             continue
-        asset = next((a for a in rel.get("assets", []) if a.get("name") == EXE_NAME), None)
+        asset = next((a for a in rel.get("assets", []) if a.get("name") == tool.exe_name), None)
         if asset and (best is None or _version_parts(tag) > _version_parts(best["tag"])):
             digest = str(asset.get("digest") or "")
             best = {
@@ -121,13 +135,13 @@ def find_release():
     return best
 
 
-def download_and_install(progress=None, cancelled=None):
-    """Downloads the VR Macro App next to this program, verifying it against
+def download_and_install(tool: Tool, progress=None, cancelled=None):
+    """Downloads the tool next to this program, verifying it against
     GitHub's checksum. progress(done_bytes, total_bytes) is called as it goes;
     cancelled() -> True stops it. Returns the installed path. Raises
     CompanionError (nothing is left behind on failure)."""
-    release = find_release()
-    dest = exe_path()
+    release = find_release(tool)
+    dest = exe_path(tool)
     part = dest + ".part"
     total = release["size"]
     sha = hashlib.sha256()

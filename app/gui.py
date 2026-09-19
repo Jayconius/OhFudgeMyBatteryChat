@@ -243,6 +243,12 @@ class AboutDialog(tk.Toplevel):
 
         ttk.Button(frm, text=i18n.t_piqad("btn_restore_icons"), command=self._on_restore_icons).pack(anchor="w", pady=(12, 0))
 
+        ttk.Button(
+            frm, text=i18n.t_piqad("btn_open_simulator"),
+            command=lambda: open_or_download_tool(self, companion.SIMULATOR, getattr(parent, "dark_mode", False)),
+        ).pack(anchor="w", pady=(12, 0))
+        ttk.Label(frm, text=i18n.t_piqad("hint_simulator"), foreground="#666", wraplength=380, justify="left").pack(anchor="w", pady=(4, 0))
+
         ttk.Button(frm, text=i18n.t_piqad("about_close"), command=self.destroy).pack(anchor="e", pady=(14, 0))
 
         self.grab_set()
@@ -822,7 +828,7 @@ class MacrosDialog(tk.Toplevel):
         ttk.Separator(frm, orient="horizontal").pack(fill="x", pady=10)
         comp_row = ttk.Frame(frm)
         comp_row.pack(fill="x")
-        ttk.Button(comp_row, text=i18n.t_piqad("btn_open_companion"), command=self._open_companion).pack(side="left")
+        ttk.Button(comp_row, text=i18n.t_piqad("btn_open_companion"), command=lambda: open_or_download_tool(self, companion.VR_MACRO_APP, getattr(self.main, "dark_mode", False))).pack(side="left")
         ttk.Label(frm, text=i18n.t_piqad("hint_companion"), foreground="#666", wraplength=560, justify="left").pack(anchor="w", pady=(6, 0))
 
         ttk.Button(frm, text=i18n.t_piqad("about_close"), command=self.destroy).pack(anchor="e", pady=(10, 0))
@@ -900,45 +906,48 @@ class MacrosDialog(tk.Toplevel):
         self.clipboard_clear()
         self.clipboard_append(self.url_var.get())
 
-    def _open_companion(self):
-        title = i18n.t("dlg_title_companion")
-        if not companion.is_available():
-            # Only ever downloads after an explicit Yes - and only this one file.
-            if not messagebox.askyesno(title, i18n.t("msg_companion_missing_fmt").format(name=companion.EXE_NAME), parent=self):
-                return
-            dlg = CompanionDownloadDialog(self)
-            self.wait_window(dlg)
-            if dlg.error is not None:
-                if dlg.error.code != "cancelled":
-                    detail = f"\n\n{dlg.error.detail}" if dlg.error.detail and dlg.error.code in ("network", "write") else ""
-                    if messagebox.askyesno(title, i18n.t(f"companion_err_{dlg.error.code}") + detail + "\n\n" + i18n.t("msg_companion_open_releases"),
-                                           icon="warning", parent=self):
-                        webbrowser.open(companion.RELEASES_PAGE)
-                return
-        try:
-            companion.launch()
-        except OSError as e:
-            messagebox.showwarning(title, i18n.t("msg_companion_launch_failed_fmt").format(error=e), parent=self)
+
+def open_or_download_tool(parent, tool, dark_mode=False):
+    """Opens one of the small separate programs (VR Macro App, Demo Simulator)
+    that live beside this app. If it isn't there, offers to download it - only
+    ever after an explicit Yes, and only that one file."""
+    if not companion.is_available(tool):
+        if not messagebox.askyesno(tool.product, i18n.t("msg_tool_missing_fmt").format(product=tool.product, name=tool.exe_name, mb=tool.approx_mb), parent=parent):
+            return
+        dlg = ToolDownloadDialog(parent, tool, dark_mode)
+        parent.wait_window(dlg)
+        if dlg.error is not None:
+            if dlg.error.code != "cancelled":
+                detail = f"\n\n{dlg.error.detail}" if dlg.error.detail and dlg.error.code in ("network", "write") else ""
+                text = i18n.t(f"companion_err_{dlg.error.code}").replace("{product}", tool.product)
+                if messagebox.askyesno(tool.product, text + detail + "\n\n" + i18n.t("msg_companion_open_releases"), icon="warning", parent=parent):
+                    webbrowser.open(companion.RELEASES_PAGE)
+            return
+    try:
+        companion.launch(tool)
+    except OSError as e:
+        messagebox.showwarning(tool.product, i18n.t("msg_tool_launch_failed_fmt").format(product=tool.product, error=e), parent=parent)
 
 
-class CompanionDownloadDialog(tk.Toplevel):
-    """Progress window for downloading the Oh Fudge VR Macro App. Closes itself when
-    done; .error is None on success, else the CompanionError (code
-    "cancelled" if the user cancelled)."""
+class ToolDownloadDialog(tk.Toplevel):
+    """Progress window for downloading one of the small separate programs.
+    Closes itself when done; .error is None on success, else the
+    CompanionError (code "cancelled" if the user cancelled)."""
 
-    def __init__(self, parent):
+    def __init__(self, parent, tool, dark_mode=False):
         super().__init__(parent)
         self.withdraw()
+        self.tool = tool
         self.error = None
         self._cancel = threading.Event()
         self._progress = (0, 0)
         self._result = None  # ("ok",) or ("error", CompanionError)
-        self.title(i18n.t("dlg_title_companion"))
+        self.title(tool.product)
         self.resizable(False, False)
-        theme.apply_window_theme(self, getattr(parent.main, "dark_mode", False))
+        theme.apply_window_theme(self, dark_mode)
         frm = ttk.Frame(self)
         frm.pack(padx=18, pady=14)
-        ttk.Label(frm, text=i18n.t("msg_companion_downloading")).pack(anchor="w")
+        ttk.Label(frm, text=i18n.t("msg_tool_downloading_fmt").format(product=tool.product)).pack(anchor="w")
         self.bar = ttk.Progressbar(frm, length=320, mode="indeterminate")
         self.bar.pack(pady=(10, 4))
         self.bar.start(15)
@@ -958,7 +967,7 @@ class CompanionDownloadDialog(tk.Toplevel):
 
     def _work(self):
         try:
-            companion.download_and_install(lambda done, total: setattr(self, "_progress", (done, total)), self._cancel.is_set)
+            companion.download_and_install(self.tool, lambda done, total: setattr(self, "_progress", (done, total)), self._cancel.is_set)
             self._result = ("ok",)
         except companion.CompanionError as e:
             self._result = ("error", e)
