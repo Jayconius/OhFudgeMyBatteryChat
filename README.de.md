@@ -58,6 +58,12 @@ Headset, Controller und Tracker zeigen ihren **Akkustand live im Stream**, und e
 | 🎨 **Ganz nach deinem Geschmack** | Schriftarten, Farben, Konturen, Wackeln / Schütteln / Pulsieren, dunkles oder helles Design. |
 | 🌍 **Sprachen** | English, Deutsch, Français, Español, 日本語 und Klingonisch. |
 
+## 🧰 Alles in drei Fenstern
+
+Die ganze Einrichtung passiert in drei einfachen Fenstern: **Gerät hinzufügen** (eine Live-Akkuanzeige), **Overlay-Effekt hinzufügen** (eine Warnung) und **Makros** (Stummschalt-Tasten und Tastenkürzel). Klicke auf das Bild, um es größer zu sehen. Es zeigt die englische Oberfläche.
+
+<p align="center"><a href="docs/images/settings.png"><img src="docs/images/settings.png" alt="Die Fenster Gerät hinzufügen, Effekt hinzufügen und Makros nebeneinander" width="100%"></a></p>
+
 ## 🎙️ Stummschalt-Makros und die VR Macro App
 
 *Neu (experimentell)*

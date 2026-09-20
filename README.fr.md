@@ -58,6 +58,12 @@ Votre casque, vos manettes et vos trackers affichent leur **batterie en direct s
 | 🎨 **À votre goût** | Polices, couleurs, contours, animations (oscillation / secousse / pulsation), thème sombre ou clair. |
 | 🌍 **Langues** | English, Deutsch, Français, Español, 日本語 et klingon. |
 
+## 🧰 Tout dans trois fenêtres
+
+Toute la configuration se fait dans trois fenêtres simples : **Ajouter un appareil** (un affichage de batterie en direct), **Ajouter un effet d'overlay** (une alerte) et **Macros** (boutons de coupure du micro et raccourcis). Cliquez sur l'image pour l'agrandir. Elle montre l'interface en anglais.
+
+<p align="center"><a href="docs/images/settings.png"><img src="docs/images/settings.png" alt="Les fenêtres Ajouter un appareil, Ajouter un effet et Macros côte à côte" width="100%"></a></p>
+
 ## 🎙️ Macros de coupure du micro et Oh Fudge VR Macro App
 
 *Nouveau (expérimental)*

@@ -58,6 +58,12 @@ Your headset, controllers and trackers show their **battery live on stream**, an
 | 🎨 **Make it yours** | Fonts, colors, outlines, wobble / shake / pulse animations, dark or light theme. |
 | 🌍 **Languages** | English, Deutsch, Français, Español, 日本語 and Klingon. |
 
+## 🧰 Everything in three windows
+
+All the setup happens in three simple windows: **Add Device** (a live battery readout), **Add Effect** (an alert) and **Macros** (mute buttons and hotkeys). Click the picture to see it bigger.
+
+<p align="center"><a href="docs/images/settings.png"><img src="docs/images/settings.png" alt="The Add Device, Add Effect and Macros windows side by side" width="100%"></a></p>
+
 ## 🎙️ Mute macros and the VR Macro App
 
 *New (Experimental)*

@@ -58,6 +58,12 @@ Tu casco, tus mandos y tus trackers muestran su **batería en directo en el stre
 | 🎨 **A tu gusto** | Fuentes, colores, contornos, animaciones (balanceo / sacudida / pulso), tema oscuro o claro. |
 | 🌍 **Idiomas** | English, Deutsch, Français, Español, 日本語 y klingon. |
 
+## 🧰 Todo en tres ventanas
+
+Toda la configuración se hace en tres ventanas sencillas: **Añadir dispositivo** (un indicador de batería en directo), **Añadir efecto de superposición** (una alerta) y **Macros** (botones de silencio y atajos). Haz clic en la imagen para verla más grande. Muestra la interfaz en inglés.
+
+<p align="center"><a href="docs/images/settings.png"><img src="docs/images/settings.png" alt="Las ventanas Añadir dispositivo, Añadir efecto y Macros una junto a otra" width="100%"></a></p>
+
 ## 🎙️ Macros de silencio y Oh Fudge VR Macro App
 
 *Nuevo (experimental)*
