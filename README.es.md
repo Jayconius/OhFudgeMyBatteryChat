@@ -1,250 +1,151 @@
 <div align="center">
 
-# Oh Fudge, My Battery Chat!
+<img src="docs/images/banner.png" alt="Oh Fudge, My Battery Chat!" width="100%">
 
-[![Version](https://img.shields.io/badge/version-v1.3.1-blue)](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/v1.3.1)
-[![Platform](https://img.shields.io/badge/platform-Windows-0078D6)](#)
-[![Requires](https://img.shields.io/badge/requires-SteamVR-orange)](#)
-[![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
+*Una superposición de batería de SteamVR para OBS - para que el chat por fin te lo recuerde.*
 
-*Una superposición de batería de SteamVR para OBS - para que el chat por
-fin pueda recordártelo.*
+[![Download](https://img.shields.io/github/v/release/Jayconius/OhFudgeMyBatteryChat?style=for-the-badge&label=Download&color=2f855a)](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/latest)
+[![Windows](https://img.shields.io/badge/plataforma-Windows-0078d4?style=for-the-badge&logo=windows&logoColor=white)](#)
+[![SteamVR](https://img.shields.io/badge/requiere-SteamVR-f97316?style=for-the-badge)](#)
+[![MIT](https://img.shields.io/badge/licencia-MIT-4c8dff?style=for-the-badge)](LICENSE)
 
 🌐 [English](README.md) | [Deutsch](README.de.md) | [Français](README.fr.md) | **Español** | [日本語](README.ja.md)
 
-![Screenshot](docs/screenshot.png)
-
 </div>
 
-Muestra en directo, durante la retransmisión, la batería de tu casco, tus
-mandos y tus trackers, con alertas emergentes cuando algo se está
-quedando bajo - como una fuente de navegador de OBS normal.
+---
+
+## ✨ ¿Qué es?
+
+Tu casco, tus mandos y tus trackers muestran su **batería en directo en el stream**, y **aparece una alerta** cuando algo se está quedando sin carga. Es una fuente de Navegador de OBS normal: no hay que instalar nada en OBS.
+
+<p align="center"><img src="docs/images/overlay.png" alt="La superposición sobre una escena de juego: seis baterías de dispositivos, una alerta de batería baja y un aviso de micrófono silenciado" width="90%"></p>
 
 > [!TIP]
-> **¿No estás retransmitiendo?** No necesitas OBS para nada - haz clic en
-> **Abrir en el navegador** dentro de la aplicación y úsala como una
-> alarma personal independiente de batería baja.
+> **¿No haces streaming?** No necesitas OBS. Pulsa **Abrir en el navegador** en la aplicación y úsalo como alarma personal de batería baja.
 
-## Inicio rápido
+## 📥 Descarga
 
-1. Descarga el exe desde [Releases](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/latest)
-   y ejecútalo con **SteamVR** ya abierto.
-2. Haz clic en **Añadir** para añadir una lectura de dispositivo o una
-   alerta de batería baja, y luego arrástrala a su sitio. Haz doble clic
-   en una fila de la lista más adelante para editarla.
-3. Copia la URL que aparece arriba en OBS como **fuente de navegador**
-   (tamaño 1920x1080).
-
-Eso es todo - no hace falta Python ni instalaciones adicionales, el exe
-es autónomo.
-
-## Guías prácticas
+| | |
+|---|---|
+| 💿 **[Oh Fudge, My Battery Chat!](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/latest)** | La aplicación. Un solo exe, nada que instalar. |
+| 🎙️ **[Oh Fudge VR Macro App](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/macros-v1.0.0)** | Opcional. Botones grandes de silencio en una ventana pequeña que puedes anclar en VR. |
+| 🧪 **[Demo Simulator](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/simulator-v2.0.0)** | Opcional. Dispositivos y micrófonos falsos, para probar sin casco. |
 
 > [!NOTE]
-> **Algunos dispositivos solo informan la batería en bloques, no de
-> forma continua.** En particular, algunos trackers pueden mostrar
-> **"n/a"** hasta que se reinician o hasta que la batería realmente baja.
-> Eso depende del propio controlador del dispositivo, no es un fallo de
-> esta aplicación - si el resto de dispositivos muestra datos
-> correctamente, todo va bien, y ese dispositivo también mostrará datos
-> reales en cuanto su controlador decida informarlos.
+> Los exe no están firmados, así que Windows SmartScreen puede decir *"editor desconocido"*. Pulsa **Más información → Ejecutar de todas formas**.
+
+## 🚀 Inicio rápido
+
+1. **Abre la aplicación** con SteamVR ya abierto. Tus dispositivos aparecen a la izquierda.
+2. **Pulsa Añadir** para crear un indicador de batería (*Añadir dispositivo*) o una alerta (*Añadir efecto de superposición*) y arrástralo a su sitio. Haz doble clic en una fila para editarla más tarde.
+3. **Copia la URL** de arriba en OBS como **fuente de Navegador** (tamaño 1920x1080). ¡Listo!
+
+<p align="center"><img src="docs/images/app.png" alt="La ventana de la aplicación: dispositivos conectados a la izquierda, elementos de la superposición a la derecha" width="90%"></p>
+
+## 🎛️ ¿Qué puede hacer?
+
+| | |
+|---|---|
+| 🔋 **Batería en directo** | Cualquier dispositivo SteamVR: casco, mandos, trackers. Usa tus propias imágenes, GIF o vídeos - o el paquete de ilustraciones incluido. |
+| 🚨 **Alertas de batería baja** | Aparecen cuando baja de tu %, con sonido. Los grupos Nudge alinean varias alertas para que nunca se solapen. |
+| ⚡ **Carga** | Una imagen mientras carga y un aviso si sigue bajando aun estando en el cargador. |
+| 🎬 **Efectos de superposición** | Ventanas emergentes independientes para: batería baja / normal, dispositivo conectado / desconectado, carga, tracking perdido y casco quitado *(experimental)*. |
+| 💜 **Comandos del chat de Twitch** | Deja que el chat dispare una alerta con un comando como `!battery` - para todos, VIP o moderadores. |
+| 🎙️ **Micrófonos** *(experimental)* | Alertas para un micrófono inalámbrico: conectado, desconectado, silenciado, hablando, en silencio. |
+| 🔘 **Macros de silencio** *(experimental)* | Silencia, activa o alterna un micrófono con un atajo global o un botón grande en pantalla. |
+| 🧩 **Grupos de sincronización** | Dispositivos que aparecen juntos, como un conjunto, cuando todos están listos. |
+| 🎨 **A tu gusto** | Fuentes, colores, contornos, animaciones (balanceo / sacudida / pulso), tema oscuro o claro. |
+| 🌍 **Idiomas** | English, Deutsch, Français, Español, 日本語 y klingon. |
+
+## 🎙️ Macros de silencio y Oh Fudge VR Macro App
+
+*Nuevo (experimental)*
+
+1. Pulsa **Macros** (arriba a la derecha) y luego **Añadir**: elige un micrófono, qué hace la macro (silenciar, activar o alternar) y, si quieres, un **atajo global** como `CTRL+MAYÚS+NUM5`. Funciona aunque un juego tenga el foco.
+2. Para botones grandes en pantalla, pulsa **Abrir Oh Fudge VR Macro App** en la misma ventana. Si aún no está en la carpeta de la aplicación, esta ofrece descargarla - solo después de que pulses Sí, y solo se conserva si su suma de verificación coincide con la de GitHub.
+3. Cada macro es un botón que muestra **LIVE**, **MUTED** u **OFFLINE**. Empieza bloqueada para que nada se mueva por accidente: **clic derecho > Edit layout** para mover, cambiar el tamaño y el color de los botones, y luego **Done**.
+4. Ancla la ventana en VR con **OVR Toolkit, XSOverlay o Desktop+**. Nunca le quita el foco a tu juego.
+
+Las macros cambian el ajuste de silencio de Windows. El botón de silencio de un micrófono inalámbrico normalmente no lo ve Windows: usa una macro (o el silencio de Windows) para que la alerta **Micrófono silenciado** reaccione.
+
+<p align="center"><img src="docs/images/vr-macro-app.png" alt="La Oh Fudge VR Macro App: seis botones de micrófono con LIVE, MUTED y OFFLINE sobre un fondo" width="90%"></p>
+
+## 🧪 Prueba sin casco
+
+Consigue el [Simulador de demostración](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/simulator-v2.0.0) y pon `OhFudgeMyBatteryChatSimulator.exe` en la **misma carpeta** que `OhFudgeMyBatteryChat.exe`. Ejecuta ambos: la aplicación muestra los dispositivos y micrófonos falsos del simulador, cada uno con controles deslizantes y casillas. Cierra el simulador para volver a tus dispositivos reales.
+
+## 📖 Guías prácticas
 
 <details>
-<summary><strong>Añadir la fuente de navegador de OBS</strong></summary>
+<summary><b>Añadir la fuente de Navegador de OBS</b></summary>
 
-1. En OBS: **Fuentes > + > Fuente de navegador**, dale un nombre y haz
-   clic en Aceptar.
-2. Pega la URL que aparece arriba en la aplicación (por defecto
-   `http://127.0.0.1:8710/overlay`).
-3. Configura el **Ancho** en `1920` y el **Alto** en `1080`. Las
-   *posiciones* de los elementos se adaptan bien a cualquier tamaño de
-   lienzo, pero los *tamaños* de los elementos están calibrados con esta
-   referencia de 1920x1080 en el editor de posición - respétala para que
-   todo se vea del mismo tamaño que en la vista previa, ni más grande ni
-   más pequeño.
-4. Deja **"Detener la fuente cuando no sea visible"** desmarcado si
-   quieres que las alertas de batería baja sigan funcionando aunque esa
-   escena no esté en pantalla.
-5. Si un sonido de advertencia no se reproduce, revisa la opción
-   **"Controlar el audio a través de OBS"** de esta fuente - algunas
-   versiones de OBS bloquean el audio de reproducción automática si no
-   está activada.
+<br>
 
-Una vez añadida, se mantiene sincronizada sola - añadir, editar o eliminar
-un Dispositivo/Efecto actualiza automáticamente la fuente de navegador ya
-abierta en aproximadamente un segundo, sin necesidad de hacer clic derecho
-para "Actualizar caché de la página actual".
+1. En OBS: **Fuentes > + > Navegador**, ponle nombre y acepta.
+2. Pega la URL de la parte superior de la aplicación (por defecto `http://127.0.0.1:8710/overlay`).
+3. Pon **Ancho** `1920` y **Alto** `1080`. Las posiciones se adaptan a cualquier lienzo, pero los tamaños están calibrados para 1920x1080.
+4. Deja desmarcado **"Detener la fuente cuando no sea visible"**, para que las alertas sigan funcionando con la escena fuera de pantalla.
+5. ¿Sin sonido? Marca **"Controlar el audio a través de OBS"** en esta fuente.
+
+Una vez añadida, se mantiene sincronizada sola: añadir, editar o quitar algo actualiza la fuente en aproximadamente un segundo.
 
 </details>
 
 <details>
-<summary><strong>Añadir un dispositivo (una lectura de batería en directo)</strong></summary>
+<summary><b>Añadir un dispositivo (un indicador de batería en directo)</b></summary>
 
-1. Haz clic en **Añadir > Añadir dispositivo**.
-2. Elige el dispositivo de la lista de la izquierda (haz clic en
-   **Actualizar** si todavía no aparece). Los dispositivos ya usados por
-   otro Dispositivo/Efecto se ocultan por defecto - marca **"Mostrar
-   dispositivos ya añadidos"** si necesitas reutilizar uno de todos modos.
-3. Ponle una etiqueta y un umbral de batería baja (%).
-4. Elige **Siempre visible** (el icono se queda fijo, solo cambia la
-   imagen cuando la batería baja) o **Oculto hasta que baja** (aparece
-   solo cuando la batería está baja).
-5. **Imágenes y sonido**: elige una imagen normal, una imagen de batería
-   baja y un sonido de advertencia - o deja cualquiera de ellos en blanco
-   para usar los valores predeterminados. Al hacer clic en
-   **Elegir...** se abre directamente `Data\assets\device icons`, un
-   paquete de ilustraciones de cascos/mandos/trackers incluido con la
-   aplicación - elige una de ahí o busca tu propia imagen/GIF/WebM.
-6. **Animación de imagen**: dale a la imagen normal y/o a la de batería
-   baja su propia animación de reposo (Wobble/Shake/Pulse), para que una
-   imagen estática no se quede simplemente ahí parada. Si eliges una para
-   la imagen de batería baja, sustituye el resplandor rojo pulsante
-   automático por tu elección.
-7. **Texto de la etiqueta / texto de % de batería**: cada uno tiene su
-   propia fuente, tamaño, color, animación y contorno - de forma
-   independiente entre sí.
-8. **Animación**: si elegiste "Oculto hasta que baja", elige cómo
-   aparece y desaparece, y pruébalo con **Probar animación** antes de
-   guardar.
-9. **Colocación**: arrástralo a su posición en el lienzo de vista previa
-   - se ajusta automáticamente a cualquier otro elemento ya colocado.
-10. Haz clic en **Guardar**.
+<br>
+
+1. Pulsa **Añadir > Añadir dispositivo**.
+2. Elige el dispositivo a la izquierda (pulsa **Actualizar** si falta). Marca **"Mostrar dispositivos ya añadidos"** para reutilizar uno.
+3. Ponle una etiqueta y un umbral de batería baja (%). Elige **Siempre visible** u **Oculto hasta bajo**.
+4. **Imágenes y sonido**: pulsa **Elegir...** para explorar el paquete de ilustraciones incluido, o elige tu propia imagen, GIF o WebM. Lo que omitas usa los valores por defecto.
+5. Da estilo al texto, añade una animación y arrástralo a su sitio en la vista previa: se alinea con tus otros elementos.
+6. Pulsa **Guardar**.
 
 </details>
 
 <details>
-<summary><strong>Añadir un efecto de superposición (una alerta independiente)</strong></summary>
+<summary><b>Añadir un efecto de superposición (una alerta independiente)</b></summary>
 
-1. Haz clic en **Añadir > Añadir efecto de superposición**.
-2. **Objetivo**: un **dispositivo específico**, o **Todos los
-   dispositivos** (opcionalmente excluyendo algunos desde la lista de
-   selección múltiple).
-3. **Disparador**: Batería baja, Batería normal, Dispositivo
-   desconectado o Dispositivo conectado.
-4. **Imagen y sonido**: elige una imagen (o GIF/vídeo) y un sonido para
-   la alerta, o deja cualquiera de los dos en blanco para usar los
-   valores predeterminados.
-5. **Texto de la leyenda** (opcional): escribe un mensaje y luego
-   define su posición respecto a la imagen, la fuente, el tamaño, el
-   color, un contorno y una animación wobble/shake/pulse.
-6. **Animación**: elige cómo aparece y desaparece la alerta, y pruébala
-   con **Probar animación** antes de guardar.
-7. **Colocación**: arrástrala a su posición - el mismo ajuste
-   automático que con los dispositivos.
-8. Haz clic en **Guardar**.
+<br>
+
+1. Pulsa **Añadir > Añadir efecto de superposición**.
+2. **Objetivo**: un **dispositivo concreto**, **todos los dispositivos** (la alerta se muestra mientras todos cumplan) o un **dispositivo de audio** (un micrófono de Windows).
+3. **Disparador**: elige cuándo aparece, por ejemplo *Batería baja* o *Micrófono silenciado*.
+4. Elige imagen y sonido (o los de por defecto) y añade un texto si quieres.
+5. Opcional: escribe un **comando de chat** como `!battery` para que el chat de Twitch también pueda dispararla (vincula antes tu cuenta con **Conectar cuenta de Twitch**).
+6. Elige la animación, colócala y pulsa **Guardar**.
 
 </details>
 
-<details>
-<summary><strong>Probar sin SteamVR (el Simulador de demostración)</strong></summary>
+## 🔒 Privacidad
 
-Consigue el [Simulador de demostración](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/simulator-v2.0.0)
-independiente si quieres grabar clips, hacer capturas de pantalla, o
-simplemente probar configuraciones de Dispositivos/Efectos sin ponerte el
-casco.
+- Todo funciona en tu PC. La superposición solo se sirve en `127.0.0.1`.
+- La aplicación solo se conecta a Internet cuando tú lo pides: la comprobación de actualizaciones opcional (desactivada por defecto), vincular Twitch (apruebas en la propia página de Twitch; nunca escribes una contraseña en esta aplicación) o descargar una herramienta complementaria opcional después de pulsar Sí.
 
-1. Coloca `OhFudgeMyBatteryChatSimulator.exe` en la **misma carpeta** que
-   `OhFudgeMyBatteryChat.exe` para que compartan una carpeta Data, y luego
-   ejecuta ambos.
-2. Lista tus Dispositivos realmente configurados (o cuatro marcadores de
-   posición genéricos más un conjunto de trackers de cuerpo completo de 5
-   puntos si aún no has añadido ninguno), cada uno con un control
-   deslizante de batería y una casilla "Conectado".
-3. La aplicación real lo detecta automáticamente mientras ambas se
-   ejecutan - requiere v1.2.0 o posterior. Cierra el Simulador (o
-   simplemente detenlo) para devolver el control al SteamVR real, sin
-   necesidad de reiniciar.
+## ⚠️ Conviene saber
 
-</details>
+- **Solo Windows**, y SteamVR debe estar abierto para ver dispositivos reales.
+- Algunos dispositivos informan de la batería a saltos, así que pueden mostrar **"n/a"** hasta que se reinicien o estén realmente bajos. Es cosa del controlador del dispositivo, no un fallo de esta aplicación.
+- Las funciones de micrófono, tracking perdido y casco quitado son nuevas. Están probadas con el Simulador de demostración (y un micrófono inalámbrico); el tracking y la proximidad del casco aún no están confirmados en hardware real - ¡se agradecen los informes!
+- Atajos: otro programa que use la misma combinación gana, algunos juegos bloquean los atajos globales, y Bloq Num debe estar activado para las teclas del teclado numérico.
 
-<details>
-<summary><strong>Macros de silencio y Oh Fudge VR Macro App (Nuevo, experimental)</strong></summary>
+## 🛠️ Compílalo tú mismo
 
-1. Haz clic en **Macros** (arriba a la derecha) y luego en **Añadir**: elige
-   un micrófono (un **dispositivo de audio**), qué hace la macro (silenciar,
-   activar o alternar) y, si quieres, un **atajo global** como
-   `CTRL+MAYÚS+NUM5` - funciona aunque un juego tenga el foco o la aplicación
-   esté en la bandeja del sistema.
-2. Para botones grandes en pantalla, haz clic en **Abrir Oh Fudge VR Macro
-   App** en la misma ventana. Si aún no está en la carpeta de la aplicación,
-   esta ofrece descargarla desde su [versión de GitHub](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/macros-v1.0.0) - solo después
-   de que pulses Sí, y solo se conserva si su suma de verificación coincide
-   con la que publica GitHub. O descárgala tú y pon `OhFudgeVRMacroApp.exe`
-   en la **misma carpeta** que `OhFudgeMyBatteryChat.exe`.
-3. Muestra un botón por macro (**LIVE**, **MUTED** u **OFFLINE**). Empieza
-   bloqueada para que nada se mueva por accidente. **Clic derecho > Edit
-   layout** (modo edición) permite arrastrar y cambiar el tamaño de los botones,
-   cambiar sus colores, redimensionar la ventana y más - pulsa **Done** para
-   bloquearla de nuevo (los menús de la aplicación están en inglés).
-4. Ancla la ventana en VR con una superposición de escritorio como XSOverlay,
-   OVR Toolkit o Desktop+. Nunca le quita el foco a tu juego. ¿Prefieres un
-   navegador? Los mismos botones están en `http://127.0.0.1:8710/macros`
-   (con tu propio puerto).
-
-Las macros cambian el ajuste de silencio de Windows. El botón de silencio de
-un micrófono inalámbrico normalmente no lo ve Windows: usa una macro (o el
-silencio de Windows) para que el disparador **Micrófono silenciado** reaccione.
-
-</details>
-
-## Características
-
-- Porcentaje de batería en directo para cualquier dispositivo SteamVR,
-  con alerta emergente de batería baja
-- Usa tus propias imágenes/GIFs/vídeos y sonidos, además de un paquete
-  incluido de ilustraciones de dispositivos - o los valores
-  predeterminados integrados
-- Personalización independiente de fuente/tamaño/color/animación/
-  contorno para el texto de la etiqueta, el texto de % de batería y las
-  leyendas de los efectos de superposición
-- Animaciones de reposo opcionales (Wobble/Shake/Pulse) para las
-  imágenes de dispositivos
-- Colocación por arrastre con ajuste automático, además de varias
-  animaciones de aparición/desvanecimiento
-- Los grupos de desplazamiento (Nudge Groups) evitan que varias alertas
-  de batería baja se superpongan - se alinean automáticamente, la más
-  antigua primero
-- Tema claro/oscuro, adaptándose automáticamente a tu configuración de
-  Windows (o ajustable manualmente en Acerca de)
-- La fuente de navegador de OBS se mantiene sincronizada automáticamente
-  al añadir/editar/eliminar algo - sin necesidad de actualizar
-  manualmente
-- Un [Simulador de demostración](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/simulator-v2.0.0)
-  independiente para probar/grabar sin SteamVR en ejecución
-- Comprobación opcional de nuevas versiones al iniciar, desactivada por
-  defecto
-- **Comandos del chat de Twitch** - deja que el chat dispare una alerta con
-  un comando como `!battery`, limitado a todos, VIP o moderadores (opcional -
-  vinculas tu cuenta en la página de autorización de Twitch)
-- **Grupos de sincronización** - dispositivos que aparecen juntos, como un
-  conjunto, cuando todos están listos
-- **Nuevo (experimental):** efectos para un dispositivo de audio (micrófono
-  inalámbrico conectado, desconectado, silenciado, hablando, en silencio) y
-  macros de silencio con atajos globales
-- **Nuevo (experimental):** la aplicación independiente
-  [Oh Fudge VR Macro App](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/macros-v1.0.0) - tus botones de silencio en una pequeña
-  ventana sin bordes que puedes anclar en VR
-- Funciona en inglés, alemán, francés, español, japonés y klingon
-
-## Compilar desde el código fuente
+Requiere Python 3.12. Los archivos `.spec` no están en el repositorio, así que usa estos comandos:
 
 ```bash
 pip install -r requirements.txt
 pyinstaller --onefile --windowed --name "OhFudgeMyBatteryChat" --collect-all openvr --collect-all pycaw --collect-all comtypes --add-data "app/fonts;fonts" --add-data "assets;device_icons" main.py
-pyinstaller --onefile --windowed --name "OhFudgeVRMacroApp" tools/vr_macro_app.py
+pyinstaller --onefile --windowed --name "OhFudgeVRMacroApp" --paths . tools/vr_macro_app.py
 ```
 
-## Licencia
+## 📄 Licencia
 
-MIT - consulta [LICENSE](LICENSE). La fuente klingon incluida tiene
-licencia aparte bajo la SIL Open Font License (consulta
-`app/fonts/LICENSE-pIqaD-qolqoS.txt`).
+MIT - consulta [LICENSE](LICENSE). La fuente klingon incluida tiene una licencia aparte, la SIL Open Font License (consulta `app/fonts/LICENSE-pIqaD-qolqoS.txt`).
 
 ---
 
-<sub>Creado con [Claude](https://claude.com) (Anthropic) mediante
-programación conversacional en pareja.</sub>
-
-<sub>Esta traducción se generó automáticamente (por Claude). Si algo no
-queda claro, la versión en inglés ([README.md](README.md)) es la que
-prevalece.</sub>
+<sub>Sin relación con Valve, Meta, Twitch ni OBS. Esos nombres pertenecen a sus dueños.<br>Creado con [Claude](https://claude.com) (Anthropic) mediante programación en pareja conversacional.</sub>

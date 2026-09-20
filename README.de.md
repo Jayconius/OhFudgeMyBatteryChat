@@ -1,242 +1,151 @@
 <div align="center">
 
-# Oh Fudge, My Battery Chat!
+<img src="docs/images/banner.png" alt="Oh Fudge, My Battery Chat!" width="100%">
 
-[![Version](https://img.shields.io/badge/version-v1.3.1-blue)](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/v1.3.1)
-[![Platform](https://img.shields.io/badge/platform-Windows-0078D6)](#)
-[![Requires](https://img.shields.io/badge/requires-SteamVR-orange)](#)
-[![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
+*Ein SteamVR-Akku-Overlay für OBS - damit der Chat dich endlich erinnern kann.*
 
-*Ein SteamVR-Akku-Overlay für OBS - damit der Chat dich endlich daran erinnern kann.*
+[![Download](https://img.shields.io/github/v/release/Jayconius/OhFudgeMyBatteryChat?style=for-the-badge&label=Download&color=2f855a)](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/latest)
+[![Windows](https://img.shields.io/badge/Plattform-Windows-0078d4?style=for-the-badge&logo=windows&logoColor=white)](#)
+[![SteamVR](https://img.shields.io/badge/benötigt-SteamVR-f97316?style=for-the-badge)](#)
+[![MIT](https://img.shields.io/badge/Lizenz-MIT-4c8dff?style=for-the-badge)](LICENSE)
 
 🌐 [English](README.md) | **Deutsch** | [Français](README.fr.md) | [Español](README.es.md) | [日本語](README.ja.md)
 
-![Screenshot](docs/screenshot.png)
-
 </div>
 
-Zeigt den Akkustand von Headset, Controllern und Trackern live im Stream an,
-mit Einblend-Warnungen, wenn etwas zur Neige geht - als ganz normale
-OBS-Browserquelle.
+---
+
+## ✨ Was ist das?
+
+Headset, Controller und Tracker zeigen ihren **Akkustand live im Stream**, und eine **Warnung erscheint**, sobald etwas knapp wird. Es ist eine normale OBS-Browserquelle - in OBS muss nichts installiert werden.
+
+<p align="center"><img src="docs/images/overlay.png" alt="Das Overlay über einer Spielszene: sechs Geräte-Akkus, eine Akku-niedrig-Warnung und ein Hinweis auf ein stummes Mikrofon" width="90%"></p>
 
 > [!TIP]
-> **Streamst du nicht?** Du brauchst OBS gar nicht - klick in der App auf
-> **Im Browser öffnen** und nutze sie als eigenständigen persönlichen
-> Akku-Alarm.
+> **Kein Streamer?** Du brauchst OBS gar nicht. Klicke in der App auf **Im Browser öffnen** und nutze es als persönlichen Akku-Alarm.
 
-## Schnellstart
+## 📥 Download
 
-1. Lade die exe aus den [Releases](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/latest)
-   herunter und starte sie bei bereits laufendem **SteamVR**.
-2. Klicke auf **Hinzufügen**, um eine Geräteanzeige oder einen Akku-Warnhinweis
-   hinzuzufügen, und ziehe ihn an die gewünschte Position. Doppelklicke später
-   auf einen Eintrag in der Liste, um ihn zu bearbeiten.
-3. Kopiere die oben angezeigte URL in OBS als **Browserquelle** (Größe
-   1920x1080).
-
-Das war's schon - kein Python oder zusätzliche Installationen nötig, die exe
-ist eigenständig lauffähig.
-
-## Anleitungen
+| | |
+|---|---|
+| 💿 **[Oh Fudge, My Battery Chat!](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/latest)** | Die App. Eine einzelne exe, nichts zu installieren. |
+| 🎙️ **[Oh Fudge VR Macro App](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/macros-v1.0.0)** | Optional. Große Stummschalt-Tasten in einem kleinen Fenster, das du in VR anheften kannst. |
+| 🧪 **[Demo Simulator](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/simulator-v2.0.0)** | Optional. Gefälschte Geräte und Mikrofone zum Ausprobieren ohne Headset. |
 
 > [!NOTE]
-> **Manche Geräte melden den Akkustand nur in Schüben, nicht fortlaufend.**
-> Vor allem einzelne Tracker zeigen möglicherweise erst **„n/a"** an, bis sie
-> neu gestartet wurden oder der Akku wirklich niedrig ist. Das liegt am
-> Treiber des jeweiligen Geräts, nicht an dieser App - wenn andere Geräte
-> korrekt Daten anzeigen, ist alles in Ordnung, und auch dieses Gerät zeigt
-> echte Daten an, sobald sein Treiber sie meldet.
+> Die exe-Dateien sind nicht signiert, daher meldet Windows SmartScreen evtl. *"Unbekannter Herausgeber"*. Klicke auf **Weitere Informationen → Trotzdem ausführen**.
+
+## 🚀 Schnellstart
+
+1. **Starte die App** bei bereits geöffnetem SteamVR. Deine Geräte erscheinen links.
+2. **Klicke auf Hinzufügen**, um eine Akkuanzeige (*Gerät hinzufügen*) oder eine Warnung (*Overlay-Effekt hinzufügen*) anzulegen, und zieh sie an die gewünschte Stelle. Per Doppelklick auf eine Zeile bearbeitest du sie später.
+3. **Kopiere die URL** oben in OBS als **Browserquelle** (Größe 1920x1080). Fertig!
+
+<p align="center"><img src="docs/images/app.png" alt="Das App-Fenster: verbundene Geräte links, Overlay-Elemente rechts" width="90%"></p>
+
+## 🎛️ Was kann es?
+
+| | |
+|---|---|
+| 🔋 **Live-Akkustand** | Für jedes SteamVR-Gerät: Headset, Controller, Tracker. Eigene Bilder, GIFs oder Videos - oder das mitgelieferte Grafikpaket. |
+| 🚨 **Akku-Warnungen** | Erscheinen, wenn ein Gerät unter deinen Wert fällt, mit Ton. Nudge-Gruppen reihen mehrere Warnungen auf, damit sie sich nie überlappen. |
+| ⚡ **Laden** | Ein Bild, während geladen wird, plus eine Warnung, wenn der Akku trotz Ladegerät weiter sinkt. |
+| 🎬 **Overlay-Effekte** | Eigenständige Einblendungen für: Akku niedrig / normal, Gerät verbunden / getrennt, Laden, Tracking verloren und Headset abgenommen *(experimentell)*. |
+| 💜 **Twitch-Chat-Befehle** | Lass den Chat eine Warnung mit einem Befehl wie `!battery` auslösen - für alle, VIPs oder Mods. |
+| 🎙️ **Mikrofone** *(experimentell)* | Warnungen für ein Funkmikrofon: verbunden, getrennt, stumm, spricht, still. |
+| 🔘 **Stummschalt-Makros** *(experimentell)* | Ein Mikro per globalem Tastenkürzel oder großer Schaltfläche stummschalten, aktivieren oder umschalten. |
+| 🧩 **Sync-Gruppen** | Geräte, die gemeinsam als Set erscheinen, sobald alle bereit sind. |
+| 🎨 **Ganz nach deinem Geschmack** | Schriftarten, Farben, Konturen, Wackeln / Schütteln / Pulsieren, dunkles oder helles Design. |
+| 🌍 **Sprachen** | English, Deutsch, Français, Español, 日本語 und Klingonisch. |
+
+## 🎙️ Stummschalt-Makros und die VR Macro App
+
+*Neu (experimentell)*
+
+1. Klicke oben rechts auf **Makros**, dann auf **Hinzufügen**: wähle ein Mikrofon, was das Makro tut (stummschalten, aktivieren oder umschalten) und optional ein **globales Tastenkürzel** wie `STRG+UMSCHALT+NUM5`. Es funktioniert auch, wenn ein Spiel im Vordergrund ist.
+2. Für große Schaltflächen klicke im selben Fenster auf **Oh Fudge VR Macro App öffnen**. Liegt sie noch nicht im Ordner der App, bietet die App den Download an - erst nach deinem Klick auf Ja, und sie wird nur behalten, wenn die Prüfsumme mit der von GitHub übereinstimmt.
+3. Jedes Makro ist eine Schaltfläche mit **LIVE**, **MUTED** oder **OFFLINE**. Zunächst ist sie gesperrt, damit nichts versehentlich verrutscht: **Rechtsklick > Edit layout** zum Verschieben, Skalieren und Umfärben, dann **Done**.
+4. Hefte das Fenster in VR mit **OVR Toolkit, XSOverlay oder Desktop+** an. Es nimmt deinem Spiel nie den Fokus.
+
+Makros ändern die Windows-Stummschaltung. Die Stummtaste eines Funkmikrofons selbst sieht Windows meist nicht - nutze ein Makro (oder die Windows-Stummschaltung), damit die Warnung **Mikro stumm** reagiert.
+
+<p align="center"><img src="docs/images/vr-macro-app.png" alt="Die Oh Fudge VR Macro App: sechs Mikrofon-Schaltflächen mit LIVE, MUTED und OFFLINE vor einem Hintergrund" width="90%"></p>
+
+## 🧪 Ausprobieren ohne Headset
+
+Hol dir den [Demo-Simulator](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/simulator-v2.0.0) und lege `OhFudgeMyBatteryChatSimulator.exe` in **denselben Ordner** wie `OhFudgeMyBatteryChat.exe`. Starte beide: Die App zeigt die gefälschten Geräte und Mikrofone des Simulators, jeweils mit Reglern und Kontrollkästchen. Schließe den Simulator, um zu deinen echten Geräten zurückzukehren.
+
+## 📖 Anleitungen
 
 <details>
-<summary><strong>Die OBS-Browserquelle einrichten</strong></summary>
+<summary><b>OBS-Browserquelle hinzufügen</b></summary>
 
-1. In OBS: **Quellen > + > Browserquelle**, einen Namen vergeben, auf OK
-   klicken.
-2. Füge die oben in der App angezeigte URL ein (Standard:
-   `http://127.0.0.1:8710/overlay`).
-3. Setze **Breite** auf `1920` und **Höhe** auf `1080`. Die *Positionen* der
-   Elemente skalieren problemlos auf jede Canvas-Größe, aber die *Größen*
-   der Elemente sind im Positions-Editor auf diese Referenz von 1920x1080
-   kalibriert - halte dich daran, damit alles so groß erscheint wie in der
-   Vorschau, nicht größer oder kleiner.
-4. Lasse **„Quelle beenden, wenn nicht sichtbar"** deaktiviert, wenn
-   Akku-Warnungen auch dann funktionieren sollen, wenn diese Szene gerade
-   nicht eingeblendet ist.
-5. Falls ein Warnton nicht abgespielt wird, prüfe die Option **„Audio über
-   OBS steuern"** dieser Quelle - manche OBS-Versionen blockieren
-   Autoplay-Audio sonst.
+<br>
 
-Einmal hinzugefügt, bleibt sie von selbst synchron - das Hinzufügen,
-Bearbeiten oder Entfernen eines Geräts/Effekts aktualisiert die bereits
-geöffnete Browserquelle automatisch innerhalb von etwa einer Sekunde. Kein
-manuelles Rechtsklicken mehr auf „Cache der aktuellen Seite aktualisieren"
-nötig.
+1. In OBS: **Quellen > + > Browser**, benennen, OK.
+2. Füge die URL von oben in der App ein (Standard `http://127.0.0.1:8710/overlay`).
+3. Setze **Breite** `1920` und **Höhe** `1080`. Positionen skalieren auf jede Leinwand, Größen sind aber auf 1920x1080 abgestimmt.
+4. Lass **"Quelle beenden, wenn nicht sichtbar"** ausgeschaltet, damit Warnungen auch bei nicht sichtbarer Szene funktionieren.
+5. Kein Ton? Aktiviere bei dieser Quelle **"Audio über OBS steuern"**.
+
+Danach bleibt sie von selbst synchron: Hinzufügen, Ändern oder Entfernen aktualisiert die Browserquelle in etwa einer Sekunde.
 
 </details>
 
 <details>
-<summary><strong>Ein Gerät hinzufügen (eine Live-Akkuanzeige)</strong></summary>
+<summary><b>Ein Gerät hinzufügen (eine Live-Akkuanzeige)</b></summary>
+
+<br>
 
 1. Klicke auf **Hinzufügen > Gerät hinzufügen**.
-2. Wähle das Gerät aus der Liste links aus (klicke auf **Aktualisieren**,
-   falls es noch nicht angezeigt wird). Geräte, die bereits von einem
-   anderen Gerät/Effekt verwendet werden, sind standardmäßig ausgeblendet -
-   aktiviere **„Bereits hinzugefügte Geräte anzeigen"**, wenn du eines
-   trotzdem erneut verwenden möchtest.
-3. Vergib eine Bezeichnung und einen Schwellenwert für niedrigen Akkustand
-   (%).
-4. Wähle **Immer sichtbar** (Symbol bleibt bestehen, wechselt bei niedrigem
-   Akku nur das Bild) oder **Versteckt bis niedrig** (blendet erst bei
-   niedrigem Akku ein).
-5. **Bilder & Ton**: Wähle ein Normalbild, ein Bild für niedrigen Akkustand
-   und einen Warnton - oder überspringe einzelne davon, um die eingebauten
-   Standards zu nutzen. Ein Klick auf **Auswählen...** öffnet direkt
-   `Data\assets\device icons`, ein mit der App gebündeltes Paket
-   illustrierter Headset-/Controller-/Tracker-Grafiken - wähle daraus oder
-   durchsuche dein eigenes Bild/GIF/WebM.
-6. **Bildanimation**: Gib dem Normal- und/oder Niedrigakku-Bild eine eigene
-   Ruheanimation (Wackeln/Schütteln/Pulsieren), damit ein statisches Bild
-   nicht einfach nur dasteht. Wählst du eine für das Niedrigakku-Bild,
-   ersetzt sie das automatische rote Puls-Glühen.
-7. **Bezeichnungstext / Akku-%-Text**: Beide erhalten eine eigene
-   Schriftart, Größe, Farbe, Animation und Kontur - unabhängig voneinander.
-8. **Animation**: Falls du „Versteckt bis niedrig" gewählt hast, lege fest,
-   wie es ein- und ausblendet, und probiere es vor dem Speichern mit
-   **Animation testen** aus.
-9. **Platzierung**: Ziehe es auf der Vorschau-Fläche an die gewünschte
-   Position - es rastet an bereits platzierten Elementen ein.
-10. Klicke auf **Speichern**.
+2. Wähle links das Gerät (fehlt es, klicke auf **Aktualisieren**). Mit **"Bereits hinzugefügte Geräte anzeigen"** kannst du eines erneut verwenden.
+3. Vergib eine Bezeichnung und eine Schwelle für niedrigen Akku (%). Wähle **Immer sichtbar** oder **Versteckt bis niedrig**.
+4. **Bilder & Ton**: Mit **Auswählen...** öffnest du das mitgelieferte Grafikpaket, oder wähle ein eigenes Bild, GIF oder WebM. Was du überspringst, nutzt die Standards.
+5. Gestalte den Text, wähle eine Animation und zieh es in der Vorschau an die richtige Stelle - es rastet an deinen anderen Elementen ein.
+6. Klicke auf **Speichern**.
 
 </details>
 
 <details>
-<summary><strong>Einen Overlay-Effekt hinzufügen (ein eigenständiger Alarm)</strong></summary>
+<summary><b>Einen Overlay-Effekt hinzufügen (eine eigenständige Warnung)</b></summary>
+
+<br>
 
 1. Klicke auf **Hinzufügen > Overlay-Effekt hinzufügen**.
-2. **Ziel**: ein **bestimmtes Gerät** oder **Alle Geräte** (optional
-   einzelne über die Mehrfachauswahl-Liste ausschließen).
-3. **Auslöser**: Akku niedrig, Akku normal, Gerät getrennt oder Gerät
-   verbunden.
-4. **Bild & Ton**: Wähle ein Bild (oder GIF/Video) und einen Ton für den
-   Alarm, oder lasse eines davon leer, um die Standards zu nutzen.
-5. **Beschriftungstext** (optional): Gib eine Nachricht ein und lege dann
-   ihre Position relativ zum Bild fest, außerdem Schriftart, Größe, Farbe,
-   eine Kontur und eine Wackel-/Schüttel-/Puls-Animation.
-6. **Animation**: Lege fest, wie der Alarm ein- und ausblendet, und
-   probiere es vor dem Speichern mit **Animation testen** aus.
-7. **Platzierung**: Ziehe ihn an die gewünschte Position - gleiches
-   Einrasten wie bei Geräten.
-8. Klicke auf **Speichern**.
+2. **Ziel**: ein **bestimmtes Gerät**, **alle Geräte** (die Warnung erscheint, solange alle zutreffen) oder ein **Audiogerät** (ein Windows-Mikrofon).
+3. **Auslöser**: wähle, wann sie erscheint, z. B. *Akku niedrig* oder *Mikro stumm*.
+4. Wähle Bild und Ton (oder die Standards) und ergänze bei Bedarf eine Beschriftung.
+5. Optional: gib einen **Chat-Befehl** wie `!battery` ein, damit auch der Twitch-Chat sie auslösen kann (verknüpfe vorher dein Konto über **Twitch-Konto verbinden**).
+6. Wähle die Animation, zieh sie an ihren Platz und klicke auf **Speichern**.
 
 </details>
 
-<details>
-<summary><strong>Testen ohne SteamVR (der Demo-Simulator)</strong></summary>
+## 🔒 Datenschutz
 
-Hol dir den eigenständigen [Demo-Simulator](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/simulator-v2.0.0),
-wenn du Clips aufnehmen, Screenshots machen oder einfach Geräte-/Effekt-
-Konfigurationen ausprobieren möchtest, ohne ein Headset aufzusetzen.
+- Alles läuft auf deinem PC. Das Overlay wird nur auf `127.0.0.1` bereitgestellt.
+- Die App geht nur ins Internet, wenn du es willst: die optionale Update-Prüfung (standardmäßig aus), das Verknüpfen mit Twitch (du bestätigst auf Twitchs eigener Seite - ein Passwort tippst du nie in dieser App) oder der Download eines optionalen Zusatzprogramms nach deinem Klick auf Ja.
 
-1. Lege `OhFudgeMyBatteryChatSimulator.exe` in denselben Ordner wie
-   `OhFudgeMyBatteryChat.exe`, damit sich beide einen Data-Ordner teilen,
-   und starte dann beide.
-2. Er listet deine echten konfigurierten Geräte auf (oder vier generische
-   Platzhalter plus ein 5-Punkte-Ganzkörper-Tracker-Set, falls du noch
-   keine hinzugefügt hast), jeweils mit einem Akku-Schieberegler und einer
-   „Verbunden"-Checkbox.
-3. Die echte App übernimmt das automatisch, solange beide laufen -
-   erfordert v1.2.0 oder neuer. Schließe den Simulator (oder stoppe ihn
-   einfach), um die Kontrolle wieder an das echte SteamVR zu übergeben -
-   kein Neustart nötig.
+## ⚠️ Gut zu wissen
 
-</details>
+- **Nur Windows**, und SteamVR muss geöffnet sein, um echte Geräte zu sehen.
+- Manche Geräte melden den Akkustand nur stückweise und zeigen daher **"n/a"**, bis sie aus- und wieder eingeschaltet wurden oder wirklich niedrig sind. Das liegt am Gerätetreiber, nicht an dieser App.
+- Die Funktionen für Mikrofone, Tracking-Verlust und abgenommenes Headset sind neu. Sie wurden mit dem Demo-Simulator (und einem Funkmikrofon) getestet; Tracking und Headset-Näherung sind auf echter Hardware noch nicht bestätigt - Rückmeldungen willkommen!
+- Tastenkürzel: Ein anderes Programm mit derselben Kombination gewinnt, manche Spiele blockieren globale Tastenkürzel, und für Nummernblock-Tasten muss NumLock an sein.
 
-<details>
-<summary><strong>Stummschalt-Makros und die Oh Fudge VR Macro App (Neu, experimentell)</strong></summary>
+## 🛠️ Selbst erstellen
 
-1. Klicke oben rechts auf **Makros**, dann auf **Hinzufügen**: wähle ein
-   Mikrofon (ein **Audiogerät**), was das Makro tut (stummschalten, Ton
-   einschalten oder umschalten) und optional ein **globales Tastenkürzel**
-   wie `STRG+UMSCHALT+NUM5` - es funktioniert, auch wenn ein Spiel im
-   Vordergrund ist oder die App im Infobereich läuft.
-2. Für große Schaltflächen auf dem Bildschirm klicke im selben Fenster auf
-   **Oh Fudge VR Macro App öffnen**. Liegt sie noch nicht im Ordner der App,
-   bietet die App an, sie aus dem [GitHub-Release](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/macros-v1.0.0) herunterzuladen -
-   erst nachdem du auf Ja geklickt hast, und sie wird nur behalten, wenn ihre
-   Prüfsumme mit der von GitHub veröffentlichten übereinstimmt. Oder lade sie
-   selbst herunter und lege `OhFudgeVRMacroApp.exe` in **denselben Ordner**
-   wie `OhFudgeMyBatteryChat.exe`.
-3. Sie zeigt pro Makro eine Schaltfläche (**LIVE**, **MUTED** oder
-   **OFFLINE**). Zunächst ist sie gesperrt, damit nichts versehentlich
-   verschoben wird. **Rechtsklick > Edit layout** (Bearbeiten-Modus) erlaubt es,
-   Schaltflächen zu verschieben und zu skalieren, Farben zu ändern, die
-   Fenstergröße anzupassen und mehr - mit **Done** sperrst du sie wieder
-   (die Menüs der App sind auf Englisch).
-4. Hefte das Fenster in VR mit einem Desktop-Overlay wie XSOverlay, OVR
-   Toolkit oder Desktop+ an. Es nimmt deinem Spiel nie den Fokus. Lieber
-   einen Browser? Dieselben Schaltflächen gibt es unter
-   `http://127.0.0.1:8710/macros` (mit deinem eigenen Port).
-
-Makros ändern die Windows-Stummschaltung. Die Stummschalttaste eines
-Funkmikrofons selbst kann Windows meist nicht erkennen - nutze ein Makro
-(oder die Windows-Stummschaltung), wenn der Auslöser **Mikro stumm**
-reagieren soll.
-
-</details>
-
-## Funktionen
-
-- Live-Akkustand in % für jedes SteamVR-Gerät, mit Einblend-Warnung bei
-  niedrigem Akku
-- Eigene Bilder/GIFs/Videos und Töne verwenden, plus ein mitgeliefertes
-  Paket illustrierter Gerätegrafiken - oder die eingebauten Standards
-- Unabhängige Anpassung von Schriftart/Größe/Farbe/Animation/Kontur für
-  Bezeichnungstext, Akku-%-Text und Overlay-Effekt-Beschriftungen
-- Optionale Ruheanimationen (Wackeln/Schütteln/Pulsieren) für Gerätebilder
-- Positionierung per Drag & Drop mit Einrasten, plus mehrere Einblend-/
-  Ausblendanimationen
-- Nudge-Gruppen verhindern, dass sich mehrere Akku-Warnungen überlappen -
-  sie reihen sich automatisch auf, älteste zuerst
-- Dunkles/helles Design, passt sich automatisch an deine Windows-
-  Einstellung an (oder manuell umstellbar im Info-Fenster)
-- Die OBS-Browserquelle bleibt automatisch synchron, wenn du etwas
-  hinzufügst/änderst/entfernst - kein manuelles Aktualisieren nötig
-- Ein eigenständiger [Demo-Simulator](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/simulator-v2.0.0)
-  zum Testen/Aufnehmen ohne laufendes SteamVR
-- Optionale Update-Prüfung beim Start, standardmäßig deaktiviert
-- **Twitch-Chat-Befehle** - lass den Chat eine Warnung mit einem Befehl wie
-  `!battery` auslösen, beschränkt auf alle, VIPs oder Moderatoren (optional -
-  du verknüpfst dein Konto auf der eigenen Twitch-Freigabeseite)
-- **Sync-Gruppen** - Geräte, die gemeinsam als Set erscheinen, sobald alle
-  bereit sind
-- **Neu (experimentell):** Audiogerät-Effekte für ein Funkmikrofon
-  (verbunden, getrennt, stumm, spricht, still) und Stummschalt-Makros mit
-  globalen Tastenkürzeln
-- **Neu (experimentell):** die eigenständige
-  [Oh Fudge VR Macro App](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/macros-v1.0.0) - deine Stummschalt-Schaltflächen in einem
-  kleinen rahmenlosen Fenster, das du in VR anheften kannst
-- Läuft auf Englisch, Deutsch, Französisch, Spanisch, Japanisch und
-  Klingonisch
-
-## Aus dem Quellcode erstellen
+Benötigt Python 3.12. Die `.spec`-Dateien liegen nicht im Repository, nutze daher diese Befehle:
 
 ```bash
 pip install -r requirements.txt
 pyinstaller --onefile --windowed --name "OhFudgeMyBatteryChat" --collect-all openvr --collect-all pycaw --collect-all comtypes --add-data "app/fonts;fonts" --add-data "assets;device_icons" main.py
-pyinstaller --onefile --windowed --name "OhFudgeVRMacroApp" tools/vr_macro_app.py
+pyinstaller --onefile --windowed --name "OhFudgeVRMacroApp" --paths . tools/vr_macro_app.py
 ```
 
-## Lizenz
+## 📄 Lizenz
 
-MIT - siehe [LICENSE](LICENSE). Die mitgelieferte klingonische Schriftart
-steht separat unter der SIL Open Font License (siehe
-`app/fonts/LICENSE-pIqaD-qolqoS.txt`).
+MIT - siehe [LICENSE](LICENSE). Die mitgelieferte Klingonisch-Schrift steht separat unter der SIL Open Font License (siehe `app/fonts/LICENSE-pIqaD-qolqoS.txt`).
 
 ---
 
-<sub>Entwickelt mit [Claude](https://claude.com) (Anthropic) im
-dialogbasierten Pair-Programming.</sub>
-
-<sub>Diese Übersetzung wurde maschinell erstellt (von Claude). Bei
-Unklarheiten ist die englische Version ([README.md](README.md))
-maßgeblich.</sub>
+<sub>Nicht mit Valve, Meta, Twitch oder OBS verbunden. Diese Namen gehören ihren jeweiligen Inhabern.<br>Erstellt mit [Claude](https://claude.com) (Anthropic) per Pair-Programming im Gespräch.</sub>
