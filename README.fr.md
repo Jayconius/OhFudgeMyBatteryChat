@@ -58,6 +58,19 @@ Votre casque, vos manettes et vos trackers affichent leur **batterie en direct s
 | 🎨 **À votre goût** | Polices, couleurs, contours, animations (oscillation / secousse / pulsation), thème sombre ou clair. |
 | 🌍 **Langues** | English, Deutsch, Français, Español, 日本語 et klingon. |
 
+## 🖼️ Utiliser vos propres images
+
+Chaque appareil et chaque alerte peut utiliser **votre propre image, GIF ou vidéo WebM** - et son propre **son**. Laissez un champ vide et l'icône intégrée est utilisée. L'application fournit aussi un pack d'illustrations de casques, manettes et trackers à choisir (c'est la deuxième ligne de l'image).
+
+<p align="center"><img src="docs/images/custom-graphics.png" alt="La même superposition deux fois : avec les icônes intégrées, et avec des illustrations de casque, manette et tracker choisies comme images personnelles" width="100%"></p>
+
+1. Ouvrez **Ajouter un appareil** (ou double-cliquez sur un appareil de la liste pour le modifier).
+2. Dans la section **Média**, cliquez sur **Choisir...** à côté de **Image normale :**. Le pack d'illustrations fourni s'ouvre, ou parcourez vers votre propre fichier.
+3. Choisissez aussi une **Image batterie faible :** si l'image doit changer quand la batterie faiblit, et un **Son d'alerte :** pour l'alerte.
+4. Cliquez sur **Enregistrer**. La superposition dans OBS se met à jour toute seule.
+
+Les alertes (**Ajouter un effet d'overlay**) fonctionnent de la même façon : choisissez une **Image :** et un son. Pack d'illustrations perdu ? **ℹ À propos > Restaurer les icônes** le remet en place.
+
 ## 🧰 Tout dans trois fenêtres
 
 Toute la configuration se fait dans trois fenêtres simples : **Ajouter un appareil** (un affichage de batterie en direct), **Ajouter un effet d'overlay** (une alerte) et **Macros** (boutons de coupure du micro et raccourcis). Cliquez sur l'image pour l'agrandir. Elle montre l'interface en anglais.

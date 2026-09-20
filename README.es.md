@@ -58,6 +58,19 @@ Tu casco, tus mandos y tus trackers muestran su **batería en directo en el stre
 | 🎨 **A tu gusto** | Fuentes, colores, contornos, animaciones (balanceo / sacudida / pulso), tema oscuro o claro. |
 | 🌍 **Idiomas** | English, Deutsch, Français, Español, 日本語 y klingon. |
 
+## 🖼️ Usa tus propias imágenes
+
+Cada dispositivo y cada alerta puede usar **tu propia imagen, GIF o vídeo WebM** - y su propio **sonido**. Si dejas un campo vacío, se usa el icono integrado. La aplicación también incluye un paquete de ilustraciones de cascos, mandos y trackers para elegir (es la segunda fila de la imagen).
+
+<p align="center"><img src="docs/images/custom-graphics.png" alt="La misma superposición dos veces: con los iconos integrados y con ilustraciones de casco, mando y tracker elegidas como imágenes propias" width="100%"></p>
+
+1. Abre **Añadir dispositivo** (o haz doble clic en un dispositivo de la lista para editarlo).
+2. En la sección **Medios**, pulsa **Elegir...** junto a **Imagen normal:**. Se abre el paquete de ilustraciones incluido, o busca tu propio archivo.
+3. Elige también una **Imagen de batería baja:** si quieres que la imagen cambie cuando la batería baje, y un **Sonido de aviso:** para la alerta.
+4. Pulsa **Guardar**. La superposición en OBS se actualiza sola.
+
+Las alertas (**Añadir efecto de superposición**) funcionan igual: elige una **Imagen:** y un sonido. ¿Perdiste el paquete de ilustraciones? **ℹ Acerca de > Restaurar iconos** lo devuelve.
+
 ## 🧰 Todo en tres ventanas
 
 Toda la configuración se hace en tres ventanas sencillas: **Añadir dispositivo** (un indicador de batería en directo), **Añadir efecto de superposición** (una alerta) y **Macros** (botones de silencio y atajos). Haz clic en la imagen para verla más grande. Muestra la interfaz en inglés.

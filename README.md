@@ -58,6 +58,19 @@ Your headset, controllers and trackers show their **battery live on stream**, an
 | 🎨 **Make it yours** | Fonts, colors, outlines, wobble / shake / pulse animations, dark or light theme. |
 | 🌍 **Languages** | English, Deutsch, Français, Español, 日本語 and Klingon. |
 
+## 🖼️ Use your own pictures
+
+Every device and every alert can use **your own picture, GIF or WebM video** - and its own **sound**. Leave a spot empty and the built-in icon is used. The app also comes with a pack of illustrated headset, controller and tracker art you can pick from (that's the second row in the picture).
+
+<p align="center"><img src="docs/images/custom-graphics.png" alt="The same overlay twice: with the built-in icons, and with illustrated headset, controller and tracker art chosen as custom pictures" width="100%"></p>
+
+1. Open **Add Device** (or double-click a device in the list to edit it).
+2. In the **Media** section click **Choose...** next to **Normal picture:**. It opens the bundled art pack, or browse to your own file.
+3. Pick a **Low battery picture:** too if you want the art to change when the battery runs low, and a **Warning sound:** for the alert.
+4. Click **Save**. The overlay in OBS updates by itself.
+
+Alerts (**Add Overlay Effect**) work the same way: pick a **Picture:** and a sound. Lost the art pack? **ℹ About > Restore Icons** brings it back.
+
 ## 🧰 Everything in three windows
 
 All the setup happens in three simple windows: **Add Device** (a live battery readout), **Add Effect** (an alert) and **Macros** (mute buttons and hotkeys). Click the picture to see it bigger.

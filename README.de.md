@@ -58,6 +58,19 @@ Headset, Controller und Tracker zeigen ihren **Akkustand live im Stream**, und e
 | 🎨 **Ganz nach deinem Geschmack** | Schriftarten, Farben, Konturen, Wackeln / Schütteln / Pulsieren, dunkles oder helles Design. |
 | 🌍 **Sprachen** | English, Deutsch, Français, Español, 日本語 und Klingonisch. |
 
+## 🖼️ Eigene Bilder verwenden
+
+Jedes Gerät und jede Warnung kann **dein eigenes Bild, GIF oder WebM-Video** und einen eigenen **Ton** nutzen. Lässt du eine Stelle leer, wird das eingebaute Symbol verwendet. Die App bringt außerdem ein Paket illustrierter Headset-, Controller- und Tracker-Grafiken zum Auswählen mit (das ist die zweite Reihe im Bild).
+
+<p align="center"><img src="docs/images/custom-graphics.png" alt="Dasselbe Overlay zweimal: mit den eingebauten Symbolen und mit illustrierten Headset-, Controller- und Tracker-Grafiken als eigene Bilder" width="100%"></p>
+
+1. Öffne **Gerät hinzufügen** (oder bearbeite ein Gerät per Doppelklick in der Liste).
+2. Klicke im Bereich **Medien** neben **Normalbild:** auf **Auswählen...**. Es öffnet das mitgelieferte Grafikpaket, oder du suchst deine eigene Datei.
+3. Wähle auch ein **Bild bei niedrigem Akku:**, wenn sich das Bild bei niedrigem Akku ändern soll, und einen **Warnton:** für die Warnung.
+4. Klicke auf **Speichern**. Das Overlay in OBS aktualisiert sich von selbst.
+
+Warnungen (**Overlay-Effekt hinzufügen**) funktionieren genauso: Wähle ein **Bild:** und einen Ton. Grafikpaket verloren? **ℹ Info > Symbole wiederherstellen** bringt es zurück.
+
 ## 🧰 Alles in drei Fenstern
 
 Die ganze Einrichtung passiert in drei einfachen Fenstern: **Gerät hinzufügen** (eine Live-Akkuanzeige), **Overlay-Effekt hinzufügen** (eine Warnung) und **Makros** (Stummschalt-Tasten und Tastenkürzel). Klicke auf das Bild, um es größer zu sehen. Es zeigt die englische Oberfläche.
