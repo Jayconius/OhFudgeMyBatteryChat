@@ -12,3 +12,9 @@ __pycache__/
 
 # Editors
 .vscode/
+
+# website (private, uploaded by hand)
+docs/site/
+
+# Cloudflare Wrangler cache (website deploy)
+.wrangler/
