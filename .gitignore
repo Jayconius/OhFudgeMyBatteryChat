@@ -18,3 +18,14 @@ docs/site/
 
 # Cloudflare Wrangler cache (website deploy)
 .wrangler/
+
+# Private notes and local-only files
+HANDOFF.md
+chat_archives/
+
+# Stray pip copy that appeared in the project root
+Lib/
+
+# Images uploaded by hand (GitHub social preview, OBS Forums icon)
+docs/images/social-preview.png
+docs/images/forum-icon.png
