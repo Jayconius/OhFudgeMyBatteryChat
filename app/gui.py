@@ -14,8 +14,12 @@ page while their editor dialog is open. The UI itself can be switched between
 several languages from the top bar.
 """
 import os
+import queue
+import sys
 import threading
+import time
 import tkinter as tk
+import traceback
 import webbrowser
 from tkinter import colorchooser, filedialog, messagebox, ttk
 from types import SimpleNamespace
@@ -40,12 +44,33 @@ from .twitch_monitor import TwitchMonitor
 from .vr_monitor import VRMonitor
 
 APP_TITLE = "Oh Fudge, My Battery Chat!"  # the pun stays the same in every language
-APP_VERSION = "1.3.1"
+APP_VERSION = "1.3.2"
 APP_AUTHOR = "Jayconius"
 APP_GITHUB_URL = "https://github.com/Jayconius/OhFudgeMyBatteryChat"
 APP_CONTACT_URL = "https://jayconius.com"
 
 DEFAULT_FONT_FAMILY = "Segoe UI"
+
+
+def log_error(text: str) -> str:
+    """Appends an error report to error.log in the Data folder (the windowed
+    exe has no console, so this is the only place a stray error is visible).
+    Returns the log's path."""
+    path = os.path.join(paths.app_data_dir(), "error.log")
+    try:
+        if os.path.exists(path) and os.path.getsize(path) > 512 * 1024:
+            os.replace(path, path + ".old")  # keep it from growing forever
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(f"--- {time.strftime('%Y-%m-%d %H:%M:%S')} (v{APP_VERSION}) ---\n{text}\n")
+    except OSError:
+        pass
+    return path
+
+
+def _log_thread_exception(args):
+    """threading.excepthook: a background thread's unexpected error goes to
+    error.log instead of vanishing with no console to print to."""
+    log_error("".join(traceback.format_exception(args.exc_type, args.exc_value, args.exc_traceback)))
 
 # Widget classes whose text is *always* pure translated chrome in this app
 # (no serial numbers, free-typed text, or other Latin-only data ever ends up
@@ -439,27 +464,50 @@ class TwitchConnectDialog(tk.Toplevel):
         theme.apply_window_theme(self, getattr(parent, "dark_mode", False))
         self.deiconify()
 
+        # The worker thread never touches Tk itself: it posts what to do next
+        # into this inbox, and the dialog picks it up on its own thread.
+        self._inbox = queue.Queue()
         threading.Thread(target=self._worker, daemon=True).start()
+        self.after(100, self._drain_inbox)
 
     def _on_cancel(self):
         self._closed = True
         self.destroy()
 
+    def _later(self, fn):
+        """Called from the worker thread: run fn on the Tk thread."""
+        self._inbox.put(fn)
+
+    def _drain_inbox(self):
+        if self._closed:
+            return
+        try:
+            while not self._closed:
+                self._inbox.get_nowait()()
+        except queue.Empty:
+            pass
+        if not self._closed:
+            self.after(100, self._drain_inbox)
+
     def _worker(self):
+        # Any failure - no internet, a timeout, an unexpected reply - must end
+        # up as a message in the dialog, never a dialog stuck on "Requesting".
         try:
             device = twitch_auth.request_device_code()
-        except RuntimeError as exc:
-            self.after(0, lambda: self._show_error(str(exc)))
+            device_code, interval, expires_in = device["device_code"], device["interval"], device["expires_in"]
+        except Exception as exc:
+            message = str(exc) or type(exc).__name__  # exc itself is gone once this block ends
+            self._later(lambda: self._show_error(message))
             return
-        self.after(0, lambda: self._show_code(device))
+        self._later(lambda: self._show_code(device))
         try:
-            result = twitch_auth.poll_for_token(
-                device["device_code"], device["interval"], device["expires_in"],
-            )
-        except RuntimeError as exc:
-            self.after(0, lambda: self._show_error(str(exc)))
+            result = twitch_auth.poll_for_token(device_code, interval, expires_in, should_stop=lambda: self._closed)
+        except Exception as exc:
+            message = str(exc) or type(exc).__name__  # exc itself is gone once this block ends
+            self._later(lambda: self._show_error(message))
             return
-        self.after(0, lambda: self._finish(result))
+        if result is not None:
+            self._later(lambda: self._finish(result))
 
     def _show_code(self, device):
         if self._closed:
@@ -2028,6 +2076,13 @@ class ItemEditorDialog(ScrollableDialogMixin, NudgeGroupMixin, SyncGroupMixin, D
         return new_group.id
 
     def _on_save(self):
+        try:
+            self._save()
+        except tk.TclError:
+            # An IntVar/DoubleVar whose box is empty or holds text can't be read.
+            messagebox.showerror(i18n.t("err_number_title"), i18n.t("err_number_body"), parent=self)
+
+    def _save(self):
         resolved = self._resolve_device_selection(self.item.device_class_hint or "Other")
         if resolved is None:
             return
@@ -2416,6 +2471,12 @@ class EffectEditorDialog(ScrollableDialogMixin, NudgeGroupMixin, DeviceSelectorM
         self.destroy()
 
     def _on_save(self):
+        try:
+            self._save()
+        except tk.TclError:
+            messagebox.showerror(i18n.t("err_number_title"), i18n.t("err_number_body"), parent=self)
+
+    def _save(self):
         mode = self.target_mode_var.get()
         if mode == "specific":
             resolved = self._resolve_device_selection(self.effect.device_class_hint or "Other")
@@ -2525,7 +2586,8 @@ class MainWindow(tk.Tk):
         self._port_tooltip = None
         self._tray_icon = None
 
-        self.title(APP_TITLE)
+        # A copy run from source (run_dev.bat) says so, so it's never mistaken for the installed exe.
+        self.title(APP_TITLE if getattr(sys, "frozen", False) else f"{APP_TITLE} (dev)")
         self.geometry("860x560")
         self.minsize(740, 480)
         theme.apply_window_theme(self, self.dark_mode)
@@ -2537,11 +2599,35 @@ class MainWindow(tk.Tk):
         self.deiconify()
         self._rebind_hotkeys()
         self.after(5000, self._check_audio_rebind)
+        if config_mod.load_problem:
+            self.after(100, self._show_config_problem)
 
         if not self.cfg.dismissed_battery_notice:
             self.after(200, self._show_battery_notice)
         else:
             self.after(200, self._maybe_check_new_icons)
+
+    def report_callback_exception(self, exc, val, tb):
+        """Any error inside a button click or timer - in this window or any
+        dialog - is logged and shown, instead of the click silently doing
+        nothing (the windowed exe has no console to print it to)."""
+        path = log_error("".join(traceback.format_exception(exc, val, tb)))
+        try:
+            messagebox.showerror(i18n.t("err_unexpected_title"),
+                                 i18n.t("err_unexpected_body_fmt").format(error=val or exc.__name__, path=path), parent=self)
+        except tk.TclError:
+            pass
+
+    def _show_config_problem(self):
+        problem = config_mod.load_problem or {}
+        copy = problem.get("copy") or "-"
+        if problem.get("kind") == "skipped":
+            body = i18n.t("cfg_problem_skipped_fmt").format(n=problem.get("count", 1), path=copy)
+        elif problem.get("kind") == "restored":
+            body = i18n.t("cfg_problem_restored_fmt").format(path=copy)
+        else:
+            body = i18n.t("cfg_problem_reset_fmt").format(path=copy)
+        messagebox.showwarning(i18n.t("cfg_problem_title"), body, parent=self)
 
     def _show_battery_notice(self):
         FirstRunNoticeDialog(self, self._on_battery_notice_dismissed)
@@ -2725,7 +2811,10 @@ class MainWindow(tk.Tk):
         port (Windows issues a new device id) - offer to switch every Effect
         and macro over, once per pair per session."""
         try:
-            if self.state() != "withdrawn" and self.grab_current() is None:
+            # Ask Tcl directly: grab_current() turns the name into a Python
+            # widget and fails (KeyError 'popdown') while a dropdown list is
+            # open, because that popup has no Python object.
+            if self.state() != "withdrawn" and not self.tk.call("grab", "current"):
                 saved = {}
                 for ef in self.cfg.effects:
                     if ef.target_mode == "audio" and ef.audio_endpoint_id:
@@ -3009,6 +3098,7 @@ class MainWindow(tk.Tk):
         else:
             self.cfg.effects = [ef for ef in self.cfg.effects if ef.id != obj.id]
         config_mod.save(self.cfg)
+        config_mod.remove_media(obj.id)
         self._refresh_item_tree()
 
     # -- polling loop ---------------------------------------------------
@@ -3099,7 +3189,10 @@ class MainWindow(tk.Tk):
 
 
 def main():
-    instance = SingleInstance()
+    threading.excepthook = _log_thread_exception
+    # Running from source (run_dev.bat) gets its own lock, so a dev copy can
+    # run next to the installed exe - it already keeps its own Data folder.
+    instance = SingleInstance("OhFudgeMyBatteryChat" if getattr(sys, "frozen", False) else "OhFudgeMyBatteryChat.Dev")
     if not instance.acquire():
         if not instance.signalled:
             # The running copy couldn't be reached to raise itself - say so

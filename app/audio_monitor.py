@@ -195,6 +195,7 @@ class AudioMonitor:
         self._snap: Dict[str, dict] = {}
         self._commands: "queue.Queue" = queue.Queue()
         self._stop = threading.Event()
+        self._wake = threading.Event()  # set by set_mute() so a press is handled now, not at the next poll
         self._thread: Optional[threading.Thread] = None
         self._handles: Dict[str, _Handles] = {}
         self._last_loud: Dict[str, float] = {}
@@ -212,6 +213,7 @@ class AudioMonitor:
 
     def stop(self):
         self._stop.set()
+        self._wake.set()
         if self._thread:
             self._thread.join(timeout=3)
         self._thread = None
@@ -231,6 +233,7 @@ class AudioMonitor:
         done = threading.Event()
         holder = {}
         self._commands.put((endpoint_id, action, holder, done))
+        self._wake.set()
         if not done.wait(COMMAND_TIMEOUT_SEC):
             return {"ok": False, "muted": None, "error": "timed out"}
         return holder
@@ -256,7 +259,8 @@ class AudioMonitor:
                     self._tick()
                 except Exception:
                     pass  # one bad cycle must never end monitoring
-                self._stop.wait(POLL_SEC)
+                self._wake.wait(POLL_SEC)
+                self._wake.clear()
         finally:
             self._handles.clear()
             self._enum = None

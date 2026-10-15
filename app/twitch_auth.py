@@ -47,17 +47,22 @@ def request_device_code():
     return _post_form(DEVICE_URL, {"client_id": CLIENT_ID, "scopes": SCOPES})
 
 
-def poll_for_token(device_code, interval_sec, expires_in_sec, on_tick=None):
+def poll_for_token(device_code, interval_sec, expires_in_sec, on_tick=None, should_stop=None):
     """Blocks, polling at interval_sec, until the user approves at
     verification_uri or expires_in_sec elapses. on_tick(seconds_left) is
-    called once per poll if given, so a caller can show a countdown.
-    Returns the token dict (with 'login' added) on success, raises
-    RuntimeError on expiry or a real Twitch-side error."""
+    called once per poll if given, so a caller can show a countdown;
+    should_stop() -> True (e.g. the dialog was cancelled) stops polling and
+    returns None. Returns the token dict (with 'login' added) on success,
+    raises RuntimeError on expiry or a real Twitch-side error."""
     deadline = time.monotonic() + expires_in_sec
     while time.monotonic() < deadline:
+        if should_stop and should_stop():
+            return None
         if on_tick:
             on_tick(int(deadline - time.monotonic()))
         time.sleep(interval_sec)
+        if should_stop and should_stop():
+            return None
         try:
             token_payload = _post_form(TOKEN_URL, {
                 "client_id": CLIENT_ID,

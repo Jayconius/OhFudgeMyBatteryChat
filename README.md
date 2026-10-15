@@ -29,7 +29,7 @@ Your headset, controllers and trackers show their **battery live on stream**, an
 | | |
 |---|---|
 | 💿 **[Oh Fudge, My Battery Chat!](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/latest)** | The app. One exe, nothing to install. |
-| 🎙️ **[Oh Fudge VR Macro App](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/macros-v1.0.0)** | Optional. Big mute buttons in a small window you can pin in VR. |
+| 🎙️ **[Oh Fudge VR Macro App](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/macros-v1.0.1)** | Optional. Big mute buttons in a small window you can pin in VR. |
 | 🧪 **[Demo Simulator](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/simulator-v2.0.0)** | Optional. Fake devices and microphones, to try things without a headset. |
 
 > [!NOTE]
@@ -150,6 +150,7 @@ Once added it stays in sync by itself: adding, editing or removing something ref
 - Some devices report battery in chunks, so they may show **"n/a"** until they're power-cycled or actually low. That's the device's driver, not a bug here.
 - The microphone, tracking-lost and headset-removed features are new. They're tested with the Demo Simulator (and one wireless mic); tracking and headset proximity aren't confirmed on real hardware yet - reports welcome!
 - Hotkeys: another program using the same combination wins, some games block global hotkeys, and NumLock must be on for numpad keys.
+- If something goes wrong, the app says so and saves the details to `error.log` in its `Data` folder - please attach it to bug reports. Your settings are backed up to `config.json.bak` every time they're saved.
 
 ## 🛠️ Build it yourself
 
@@ -160,6 +161,8 @@ pip install -r requirements.txt
 pyinstaller --onefile --windowed --name "OhFudgeMyBatteryChat" --collect-all openvr --collect-all pycaw --collect-all comtypes --add-data "app/fonts;fonts" --add-data "assets;device_icons" main.py
 pyinstaller --onefile --windowed --name "OhFudgeVRMacroApp" --paths . tools/vr_macro_app.py
 ```
+
+To just run it from the source code (no build), double-click `run_dev.bat`; `run_dev_simulator.bat` starts the Demo Simulator next to it. The dev copy keeps its own `Data` folder inside the project and says "(dev)" in its title.
 
 ## 📄 License
 

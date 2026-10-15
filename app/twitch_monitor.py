@@ -8,7 +8,6 @@ pair is saved to disk immediately, not just kept in memory - losing one
 before it's persisted would strand the connection with no way back in
 short of the user re-approving from scratch.
 """
-import ssl
 import threading
 import time
 
@@ -17,6 +16,7 @@ from . import twitch_auth
 from .twitch_chat import TwitchChatConnection, parse_privmsg, sender_meets_permission
 
 RECONNECT_DELAY_SEC = 5
+MAX_RECONNECT_DELAY_SEC = 120  # back off this far while chat keeps failing (no internet, revoked login)
 IDLE_RETRY_SEC = 2  # how often to check "are we supposed to be connected yet" when not
 
 
@@ -35,6 +35,7 @@ class TwitchMonitor:
         self._active = {}  # effect_id -> monotonic expiry
         self._stop = threading.Event()
         self._thread = None
+        self._conn = None
         self.connected = False
         self.last_error = ""
 
@@ -47,6 +48,9 @@ class TwitchMonitor:
 
     def stop(self):
         self._stop.set()
+        conn = self._conn
+        if conn is not None:
+            conn.close()  # wakes a read that would otherwise wait up to 10 s for chat
         if self._thread:
             self._thread.join(timeout=5)
         self.connected = False
@@ -78,27 +82,38 @@ class TwitchMonitor:
             return False
         try:
             token_payload = twitch_auth.refresh_access_token(cfg.twitch_refresh_token)
-        except RuntimeError as exc:
+            access_token = token_payload["access_token"]
+        except Exception as exc:
+            # Any failure - no internet, a timeout, a revoked login - must
+            # only mean "try again later", never end chat commands for good.
             self.last_error = f"Refresh failed: {exc}"
             return False
-        cfg.twitch_access_token = token_payload["access_token"]
+        cfg.twitch_access_token = access_token
         if token_payload.get("refresh_token"):
             cfg.twitch_refresh_token = token_payload["refresh_token"]
-        config_mod.save(cfg)
+        try:
+            config_mod.save(cfg)
+        except OSError as exc:
+            self.last_error = f"Couldn't save the refreshed Twitch login: {exc}"
         return True
 
     def _run(self):
+        delay = RECONNECT_DELAY_SEC
         while not self._stop.is_set():
             cfg = self.get_config()
             if not cfg.twitch_connected or not cfg.twitch_access_token or not cfg.twitch_login:
                 self.connected = False
+                delay = RECONNECT_DELAY_SEC
                 self._stop.wait(IDLE_RETRY_SEC)
                 continue
 
             conn = TwitchChatConnection(cfg.twitch_access_token, cfg.twitch_login, cfg.twitch_login)
+            self._conn = conn
             clean_stop = False
+            connected_at = None
             try:
                 conn.connect()
+                connected_at = time.monotonic()
                 self.connected = True
                 self.last_error = ""
                 for line in conn.read_lines():
@@ -110,9 +125,10 @@ class TwitchMonitor:
                     parsed = parse_privmsg(line)
                     if parsed:
                         self._handle_message(parsed, self.get_config())
-            except (OSError, ssl.SSLError) as exc:
+            except Exception as exc:  # network, TLS, or anything unexpected - retry, don't die
                 self.last_error = str(exc)
             finally:
+                self._conn = None
                 conn.close()
                 self.connected = False
 
@@ -123,4 +139,8 @@ class TwitchMonitor:
             # refresh before the next attempt; a refresh of a still-valid
             # token is harmless and just returns a fresh pair.
             self._try_refresh(self.get_config())
-            self._stop.wait(RECONNECT_DELAY_SEC)
+            # A connection that stayed up for a while resets the wait; repeated
+            # quick failures back off so a dead connection isn't hammered.
+            lasted = connected_at is not None and time.monotonic() - connected_at > 60
+            delay = RECONNECT_DELAY_SEC if lasted else min(delay * 2, MAX_RECONNECT_DELAY_SEC)
+            self._stop.wait(delay)

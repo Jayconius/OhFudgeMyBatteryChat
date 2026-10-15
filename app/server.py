@@ -9,6 +9,7 @@ import json
 import mimetypes
 import os
 import posixpath
+import re
 import socket
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -120,7 +121,7 @@ def _preview_payload(preview_state: PreviewState):
         return {"active": False}
     low_path = p.get("low_path")
     if low_path and os.path.isfile(low_path):
-        pic_src = "/media/_preview/low"
+        pic_src = _media_url("/media/_preview/low", low_path)
     else:
         pic_src = DEFAULTS_BY_CLASS.get(p.get("device_class_hint", "Other"), DEFAULTS_BY_CLASS["_generic"]) if p.get("mode") == "effect" else DEFAULTS_BY_CLASS.get("_low")
     return {
@@ -151,6 +152,19 @@ def _preview_payload(preview_state: PreviewState):
         "outline_thickness_px": p.get("outline_thickness_px", 2),
         "outline_color": p.get("outline_color", "#000000"),
     }
+
+
+def _media_url(base: str, full_path: str) -> str:
+    """The URL the overlay page loads a custom file from. It ends in the
+    file's own extension (/media/<id>/normal.webm) because that is how the
+    page tells a WebM video (needs a <video> element) from a picture."""
+    return base + os.path.splitext(full_path)[1].lower()
+
+
+def _script_json(value) -> str:
+    """JSON that is safe to drop inside a <script> block: a label or caption
+    containing "</script>" or "<!--" can't end or break the block."""
+    return json.dumps(value).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
 
 
 def _item_payload(item, defaults_by_class: dict, nudge_groups_by_id: dict):
@@ -203,17 +217,17 @@ def _item_payload(item, defaults_by_class: dict, nudge_groups_by_id: dict):
         "nudge_group_id": item.nudge_group_id or "",
         "nudge_direction": group.direction if group else "left",
         "nudge_spacing_px": group.spacing_px if group else 0,
-        "normal_src": f"/media/{item.id}/normal" if normal else defaults_by_class.get(item.device_class_hint, defaults_by_class.get("_generic", "")),
-        "low_src": f"/media/{item.id}/low" if low else defaults_by_class.get("_low", ""),
-        "sound_src": f"/media/{item.id}/sound" if sound else defaults_by_class.get("_beep", ""),
+        "normal_src": _media_url(f"/media/{item.id}/normal", normal) if normal else defaults_by_class.get(item.device_class_hint, defaults_by_class.get("_generic", "")),
+        "low_src": _media_url(f"/media/{item.id}/low", low) if low else defaults_by_class.get("_low", ""),
+        "sound_src": _media_url(f"/media/{item.id}/sound", sound) if sound else defaults_by_class.get("_beep", ""),
         "show_charging_status": item.show_charging_status,
         "charging_pic_animation": item.charging_pic_animation,
-        "charging_src": f"/media/{item.id}/charging" if charging else defaults_by_class.get("_charging", ""),
+        "charging_src": _media_url(f"/media/{item.id}/charging", charging) if charging else defaults_by_class.get("_charging", ""),
         "warn_drain_while_charging": item.warn_drain_while_charging,
         "warn_drain_pic_animation": item.warn_drain_pic_animation,
-        "warn_drain_src": f"/media/{item.id}/warn_drain" if warn_drain else defaults_by_class.get("_warn_drain", ""),
+        "warn_drain_src": _media_url(f"/media/{item.id}/warn_drain", warn_drain) if warn_drain else defaults_by_class.get("_warn_drain", ""),
         "warn_drain_sound_cooldown_sec": item.warn_drain_sound_cooldown_sec,
-        "warn_drain_sound_src": f"/media/{item.id}/warn_drain_sound" if warn_drain_sound else defaults_by_class.get("_beep", ""),
+        "warn_drain_sound_src": _media_url(f"/media/{item.id}/warn_drain_sound", warn_drain_sound) if warn_drain_sound else defaults_by_class.get("_beep", ""),
         "hide_on_charging": item.hide_on_charging,
     }
 
@@ -255,8 +269,8 @@ def _effect_payload(effect, defaults_by_class: dict, nudge_groups_by_id: dict):
         "outline_enabled": effect.outline_enabled,
         "outline_thickness_px": effect.outline_thickness_px,
         "outline_color": effect.outline_color,
-        "pic_src": f"/media/effect/{effect.id}/picture" if pic else _default_effect_picture(effect, defaults_by_class),
-        "sound_src": f"/media/effect/{effect.id}/sound" if sound else defaults_by_class.get("_beep", ""),
+        "pic_src": _media_url(f"/media/effect/{effect.id}/picture", pic) if pic else _default_effect_picture(effect, defaults_by_class),
+        "sound_src": _media_url(f"/media/effect/{effect.id}/sound", sound) if sound else defaults_by_class.get("_beep", ""),
         "audio_endpoint_id": effect.audio_endpoint_id or "",
         "audio_silent_sec": effect.audio_silent_sec,
     }
@@ -403,6 +417,29 @@ const DRAIN_MARGIN_PCT = 2;
 
 function isVideoSrc(src) { return /\.webm($|\?)/i.test(src || ''); }
 
+// A picture element for src: <video> for WebM, <img> for everything else.
+function makePic(src) {
+  const video = isVideoSrc(src);
+  const pic = document.createElement(video ? 'video' : 'img');
+  pic.className = 'pic';
+  if (video) { pic.autoplay = true; pic.loop = true; pic.muted = true; pic.playsInline = true; }
+  pic.src = src;
+  return pic;
+}
+
+// Shows src in a Device item's picture slot, swapping <img> for <video> (or
+// back) when the new picture is the other kind - e.g. a PNG normal picture
+// with a WebM low-battery or charging picture.
+function setPicSrc(s, src) {
+  if (s.pic && (s.pic.tagName === 'VIDEO') === isVideoSrc(src)) {
+    if (s.pic.getAttribute('src') !== src) s.pic.setAttribute('src', src);
+    return;
+  }
+  const pic = makePic(src);
+  if (s.pic) s.pic.replaceWith(pic);
+  s.pic = pic;
+}
+
 // Idle animations a user can pick for a Device's Normal/Low picture, so a
 // custom static image isn't stuck looking boring. Reuses the same wobble/
 // shake/pulse keyframes as text styling. "none" clears any inline animation,
@@ -496,11 +533,7 @@ for (const item of ITEMS) {
   el.style.width = item.width_px + 'px';
   if (item.show_mode !== 'always') el.style.display = 'none';
 
-  const isVideo = isVideoSrc(item.normal_src) || isVideoSrc(item.low_src);
-  const pic = document.createElement(isVideo ? 'video' : 'img');
-  pic.className = 'pic';
-  pic.src = item.normal_src;
-  if (isVideo) { pic.autoplay = true; pic.loop = true; pic.muted = true; pic.playsInline = true; }
+  const pic = makePic(item.normal_src);
   applyPicAnimation(pic, item.normal_pic_animation);
   el.appendChild(pic);
 
@@ -807,7 +840,7 @@ async function poll() {
       const wantAnim = showWarnPic ? item.warn_drain_pic_animation
         : showChargingPic ? item.charging_pic_animation
         : showLowPic ? item.low_pic_animation : item.normal_pic_animation;
-      if (s.pic && s.pic.getAttribute('src') !== wantSrc) s.pic.setAttribute('src', wantSrc);
+      setPicSrc(s, wantSrc);
       applyPicAnimation(s.pic, wantAnim);
       if (s.pct) s.pct.textContent = hasBattery ? Math.round(battery) + '%' : '--%';
       s.el.classList.toggle('low', showLowPic);
@@ -893,13 +926,15 @@ async function poll() {
         setTimeout(() => { if (!s.shown) elRef.style.display = 'none'; }, EXIT_DUR_MS + 20);
       }
 
+      // Sound follows what is actually on screen: a timed effect that has
+      // already hidden itself stays quiet until its trigger re-fires.
       const now = Date.now();
-      if (shouldShow && s.audio && (!s.lastShown || now - s.lastSoundTs > effect.sound_cooldown_sec * 1000)) {
+      if (s.shown && s.audio && (!s.lastShown || now - s.lastSoundTs > effect.sound_cooldown_sec * 1000)) {
         s.audio.currentTime = 0;
         playAlertSound(s.audio);
         s.lastSoundTs = now;
       }
-      s.lastShown = shouldShow;
+      s.lastShown = s.shown;
     }
 
     applyNudgeLayout();
@@ -1049,6 +1084,11 @@ setInterval(refresh, 700);
 """
 
 
+_PLACEHOLDER_RE = re.compile(r"__(?:APP_TITLE|ITEMS_JSON|EFFECTS_JSON|SYNC_GROUPS_JSON|POLL_MS|CONFIG_VERSION)__")
+_RANGE_RE = re.compile(r"^bytes=(\d*)-(\d*)$")
+_SEND_CHUNK = 256 * 1024
+
+
 class _Handler(BaseHTTPRequestHandler):
     server_version = "OhFudgeMyBatteryChat/1.0"
 
@@ -1082,17 +1122,51 @@ class _Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _send_file(self, full_path):
+        """Streams a file instead of reading it all into memory, and answers
+        byte-range requests - browsers use those to loop and seek WebM video."""
         if not os.path.isfile(full_path):
             self.send_error(404, "Not found")
             return
         ctype, _ = mimetypes.guess_type(full_path)
-        with open(full_path, "rb") as f:
-            data = f.read()
-        self.send_response(200)
+        size = os.path.getsize(full_path)
+        start, end = 0, size - 1
+        partial = False
+        m = _RANGE_RE.match((self.headers.get("Range") or "").strip())
+        if m and size > 0 and (m.group(1) or m.group(2)):
+            if m.group(1):
+                start = int(m.group(1))
+                end = min(int(m.group(2)), size - 1) if m.group(2) else size - 1
+            else:  # "bytes=-N": the last N bytes
+                start = max(0, size - int(m.group(2)))
+            if start > end or start >= size:
+                self.send_response(416)
+                self.send_header("Content-Range", f"bytes */{size}")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            partial = True
+        length = end - start + 1 if size else 0
+        self.send_response(206 if partial else 200)
         self.send_header("Content-Type", ctype or "application/octet-stream")
-        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Accept-Ranges", "bytes")
+        if partial:
+            self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+        self.send_header("Content-Length", str(length))
         self.end_headers()
-        self.wfile.write(data)
+        if self.command == "HEAD":
+            return
+        try:
+            with open(full_path, "rb") as f:
+                f.seek(start)
+                remaining = length
+                while remaining > 0:
+                    chunk = f.read(min(_SEND_CHUNK, remaining))
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    remaining -= len(chunk)
+        except (ConnectionError, OSError):
+            pass  # the browser stopped reading (e.g. it only wanted the start of a video)
 
     def do_GET(self):
         path = urlsplit(self.path).path
@@ -1131,7 +1205,7 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_json({"macros": self._macro_states()})
             return
 
-        if path == "/media/_preview/low":
+        if posixpath.splitext(path)[0] == "/media/_preview/low":
             p = self.server.preview_state.get()
             low_path = p.get("low_path") if p else None
             if not low_path or not os.path.isfile(low_path):
@@ -1237,22 +1311,27 @@ class _Handler(BaseHTTPRequestHandler):
         from . import default_assets
         default_assets.ensure_defaults()
         nudge_groups_by_id = {g.id: g for g in cfg.nudge_groups}
-        items_json = json.dumps([_item_payload(it, DEFAULTS_BY_CLASS, nudge_groups_by_id) for it in cfg.items])
-        effects_json = json.dumps([_effect_payload(ef, DEFAULTS_BY_CLASS, nudge_groups_by_id) for ef in cfg.effects])
-        sync_groups_json = json.dumps([
-            {"id": g.id, "ready_mode": g.ready_mode, "ready_threshold_pct": g.ready_threshold_pct}
-            for g in cfg.sync_groups
-        ])
-        html = OVERLAY_PAGE_TEMPLATE.replace("__APP_TITLE__", APP_TITLE)
-        html = html.replace("__ITEMS_JSON__", items_json)
-        html = html.replace("__EFFECTS_JSON__", effects_json)
-        html = html.replace("__SYNC_GROUPS_JSON__", sync_groups_json)
-        html = html.replace("__POLL_MS__", str(int(max(0.25, cfg.poll_interval_sec) * 1000)))
-        html = html.replace("__CONFIG_VERSION__", json.dumps(_config_version()))
+        values = {
+            "__APP_TITLE__": APP_TITLE,
+            "__ITEMS_JSON__": _script_json([_item_payload(it, DEFAULTS_BY_CLASS, nudge_groups_by_id) for it in cfg.items]),
+            "__EFFECTS_JSON__": _script_json([_effect_payload(ef, DEFAULTS_BY_CLASS, nudge_groups_by_id) for ef in cfg.effects]),
+            "__SYNC_GROUPS_JSON__": _script_json([
+                {"id": g.id, "ready_mode": g.ready_mode, "ready_threshold_pct": g.ready_threshold_pct}
+                for g in cfg.sync_groups
+            ]),
+            "__POLL_MS__": str(int(max(0.25, cfg.poll_interval_sec) * 1000)),
+            "__CONFIG_VERSION__": json.dumps(_config_version()),
+        }
+        # One pass, so text inside a label that happens to look like a
+        # placeholder is never substituted a second time.
+        html = _PLACEHOLDER_RE.sub(lambda m: values[m.group(0)], OVERLAY_PAGE_TEMPLATE)
         self._send_html(html)
 
     def _handle_media(self, path):
         parts = path.split("/")
+        # The last part may carry the file's extension (normal.webm) so the
+        # page can tell video from pictures - only the kind before it matters.
+        parts[-1] = posixpath.splitext(parts[-1])[0]
         cfg = self.server.get_config()
 
         if len(parts) == 5 and parts[2] == "effect":
@@ -1301,7 +1380,14 @@ def find_free_port() -> int:
 
 class OverlayHTTPServer(ThreadingHTTPServer):
     daemon_threads = True
-    allow_reuse_address = True
+    # Not SO_REUSEADDR: on Windows that lets two programs share one port
+    # silently, which hides a port conflict instead of reporting it.
+    allow_reuse_address = False
+
+    def server_bind(self):
+        if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
 
     def __init__(self, port: int, get_config, vr_monitor: VRMonitor, preview_state: PreviewState, twitch_monitor=None, audio_monitor=None):
         super().__init__(("127.0.0.1", port), _Handler)

@@ -47,7 +47,7 @@ sys.path.insert(0, PROJECT_ROOT)
 from app import paths as paths_mod
 from app.single_instance import SingleInstance
 
-VR_MACRO_APP_VERSION = "1.0.0"  # its own version line (release tags are macros-vX.Y.Z), independent of the main app's
+VR_MACRO_APP_VERSION = "1.0.1"  # its own version line (release tags are macros-vX.Y.Z), independent of the main app's
 APP_TITLE = "Oh Fudge, My Battery Chat!"
 WINDOW_TITLE = "Oh Fudge VR Macro App"
 
@@ -492,6 +492,8 @@ class MacroApp(tk.Tk):
     def _state_of(self, m):
         if not self.app_ok or not m.get("connected"):
             return "offline", "OFFLINE"
+        if m.get("muted") is None:
+            return "offline", "?"  # connected, but its mute state can't be read right now - never guess LIVE
         return ("muted", "MUTED") if m.get("muted") else ("live", "LIVE")
 
     def _rounded(self, x1, y1, x2, y2, r, **kw):
@@ -538,7 +540,6 @@ class MacroApp(tk.Tk):
                 hs = self._sc(14)
                 c.create_rectangle(x + w - hs, y + h - hs, x + w - 2, y + h - 2, fill="#ffffff", outline="")
         if self.editing:
-            g = self._sc(18)
             for i in (4, 9, 14):
                 d = self._sc(i)
                 c.create_line(cw - d, ch - 2, cw - 2, ch - d, fill="#8f99ad", width=2)

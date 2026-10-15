@@ -29,7 +29,7 @@
 | | |
 |---|---|
 | 💿 **[Oh Fudge, My Battery Chat!](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/latest)** | 本体アプリ。exe 1つで、インストール不要。 |
-| 🎙️ **[Oh Fudge VR Macro App](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/macros-v1.0.0)** | オプション。VR内に固定できる小さなウィンドウの大きなミュートボタン。 |
+| 🎙️ **[Oh Fudge VR Macro App](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/macros-v1.0.1)** | オプション。VR内に固定できる小さなウィンドウの大きなミュートボタン。 |
 | 🧪 **[Demo Simulator](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/simulator-v2.0.0)** | オプション。ヘッドセットなしで試せる偽のデバイスとマイク。 |
 
 > [!NOTE]
@@ -150,6 +150,7 @@
 - 一部のデバイスはバッテリー残量を断続的にしか報告しないため、再起動するか本当に少なくなるまで **「n/a」** と表示されることがあります。これはデバイスのドライバーの仕様で、このアプリの不具合ではありません。
 - マイク、トラッキング喪失、ヘッドセットを外した検出は新機能です。デモシミュレーター（とワイヤレスマイク1台）でテスト済みですが、トラッキングとヘッドセットの近接検出は実機ではまだ確認できていません。ご報告をお待ちしています！
 - ホットキー：同じ組み合わせを使う他のプログラムが優先され、一部のゲームはグローバルホットキーをブロックします。テンキーを使うにはNumLockをオンにしてください。
+- 問題が起きた場合はアプリが知らせ、詳細を `Data` フォルダーの `error.log` に保存します。不具合を報告するときは添付してください。設定は保存のたびに `config.json.bak` にバックアップされます。
 
 ## 🛠️ 自分でビルドする
 
@@ -160,6 +161,8 @@ pip install -r requirements.txt
 pyinstaller --onefile --windowed --name "OhFudgeMyBatteryChat" --collect-all openvr --collect-all pycaw --collect-all comtypes --add-data "app/fonts;fonts" --add-data "assets;device_icons" main.py
 pyinstaller --onefile --windowed --name "OhFudgeVRMacroApp" --paths . tools/vr_macro_app.py
 ```
+
+ビルドせずにソースから直接実行するには `run_dev.bat` をダブルクリックします。`run_dev_simulator.bat` でデモシミュレーターも一緒に起動できます。開発版はプロジェクト内の専用の `Data` フォルダーを使い、タイトルに「(dev)」と表示されます。
 
 ## 📄 ライセンス
 

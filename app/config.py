@@ -6,10 +6,14 @@ picks are copied into that same folder so the config stays self-contained
 even if the original files move or the app updates.
 """
 import dataclasses
+import glob
 import json
 import os
+import re
 import secrets
 import shutil
+import threading
+import time
 import uuid
 from typing import Optional
 
@@ -407,23 +411,120 @@ class AppConfig:
         return cfg
 
 
+_save_lock = threading.Lock()
+
+# Set by load() when config.json couldn't be read in full - the unreadable
+# file is kept as a copy (never silently overwritten) and the GUI tells the
+# user where it went. None when everything loaded normally.
+load_problem: Optional[dict] = None
+
+
+def _entries(d, key, cls, skipped):
+    """Builds cls objects from d[key], skipping (and counting) any entry
+    that isn't usable instead of letting one bad entry stop the app."""
+    raw = d.get(key)
+    if not isinstance(raw, list):
+        return []
+    out = []
+    for entry in raw:
+        try:
+            if not isinstance(entry, dict):
+                raise TypeError("not an object")
+            out.append(cls.from_dict(entry))
+        except (TypeError, ValueError, AttributeError):
+            skipped.append(key)
+    return out
+
+
+def _parse(d) -> "tuple[AppConfig, list]":
+    """AppConfig from a loaded JSON dict, plus the list of skipped entries."""
+    if not isinstance(d, dict):
+        raise ValueError("config.json doesn't contain an object")
+    skipped = []
+    base = {k: v for k, v in d.items() if k not in ("items", "effects", "nudge_groups", "sync_groups", "macros")}
+    cfg = AppConfig.from_dict(base)
+    if not isinstance(cfg.port, int) or not 1 <= cfg.port <= 65535:
+        cfg.port = 8710
+    if not isinstance(cfg.poll_interval_sec, (int, float)) or cfg.poll_interval_sec <= 0:
+        cfg.poll_interval_sec = 1.0
+    cfg.items = _entries(d, "items", OverlayItem, skipped)
+    cfg.effects = _entries(d, "effects", EffectItem, skipped)
+    cfg.nudge_groups = _entries(d, "nudge_groups", NudgeGroup, skipped)
+    cfg.sync_groups = _entries(d, "sync_groups", SyncGroup, skipped)
+    cfg.macros = _entries(d, "macros", MacroItem, skipped)
+    return cfg, skipped
+
+
+def _read(path) -> "tuple[AppConfig, list]":
+    with open(path, "r", encoding="utf-8") as f:
+        return _parse(json.load(f))
+
+
+def _keep_copy(path) -> str:
+    """Copies an unreadable config.json aside so the next save can't destroy
+    whatever is still recoverable in it. Returns the copy's path ('' if even
+    that failed)."""
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    dest = f"{path}.broken-{stamp}"
+    try:
+        shutil.copyfile(path, dest)
+        return dest
+    except OSError:
+        return ""
+
+
 def load() -> AppConfig:
+    global load_problem
+    load_problem = None
     path = paths.config_path()
     if not os.path.exists(path):
         return AppConfig()
     try:
-        with open(path, "r", encoding="utf-8") as f:
-            return AppConfig.from_dict(json.load(f))
-    except (json.JSONDecodeError, OSError):
-        return AppConfig()
+        cfg, skipped = _read(path)
+    except (ValueError, TypeError, AttributeError, OSError):
+        # Unreadable (e.g. cut short by a crash or power loss mid-save):
+        # keep a copy, then fall back to the last good backup if there is one.
+        copy = _keep_copy(path)
+        try:
+            cfg, _ = _read(path + ".bak")
+            load_problem = {"kind": "restored", "copy": copy}
+        except (ValueError, TypeError, AttributeError, OSError):
+            cfg = AppConfig()
+            load_problem = {"kind": "reset", "copy": copy}
+        return cfg
+    if skipped:
+        load_problem = {"kind": "skipped", "copy": _keep_copy(path), "count": len(skipped)}
+    return cfg
 
 
 def save(cfg: AppConfig) -> None:
+    """Writes config.json safely from any thread: one writer at a time, the
+    new file is fully on disk before it replaces the old one, and the
+    previous good version is kept as config.json.bak."""
     path = paths.config_path()
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(cfg.to_dict(), f, indent=2)
-    os.replace(tmp, path)
+    data = json.dumps(cfg.to_dict(), indent=2)
+    with _save_lock:
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        if os.path.exists(path):
+            try:
+                shutil.copyfile(path, path + ".bak")
+            except OSError:
+                pass
+        # Windows refuses to replace a file another program has open at that
+        # moment (the VR Macro App reads this file every few seconds), so
+        # retry briefly instead of failing the save.
+        for attempt in range(20):
+            try:
+                os.replace(tmp, path)
+                return
+            except PermissionError:
+                if attempt == 19:
+                    raise
+                time.sleep(0.05)
 
 
 def new_item_id() -> str:
@@ -454,8 +555,31 @@ def import_media(item_id: str, source_path: str, kind: str) -> str:
     dest_dir = paths.item_assets_dir(item_id)
     dest_name = f"{kind}{ext}"
     dest_path = os.path.join(dest_dir, dest_name)
-    shutil.copyfile(source_path, dest_path)
+    if os.path.normcase(os.path.abspath(source_path)) != os.path.normcase(os.path.abspath(dest_path)):
+        shutil.copyfile(source_path, dest_path)
+    # A new pick with a different file type (normal.png -> normal.webm) would
+    # otherwise leave the old file behind forever.
+    for old in glob.glob(os.path.join(glob.escape(dest_dir), glob.escape(kind) + ".*")):
+        if os.path.normcase(old) != os.path.normcase(dest_path):
+            try:
+                os.remove(old)
+            except OSError:
+                pass
     return os.path.relpath(dest_path, paths.app_data_dir())
+
+
+_SAFE_ID = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def remove_media(item_id: str) -> None:
+    """Deletes a removed Device/Effect's own media folder (Data/assets/<id>).
+    Only ever touches a folder named exactly after a plain id - never the
+    shared _defaults or device-icon folders."""
+    if not item_id or not _SAFE_ID.match(item_id) or item_id.startswith("_"):
+        return
+    folder = os.path.join(paths.assets_dir(), item_id)
+    if os.path.isdir(folder):
+        shutil.rmtree(folder, ignore_errors=True)
 
 
 def resolve_media(relative_path: Optional[str]) -> Optional[str]:

@@ -29,3 +29,6 @@ Lib/
 # Images uploaded by hand (GitHub social preview, OBS Forums icon)
 docs/images/social-preview.png
 docs/images/forum-icon.png
+
+# Claude Code project notes (private)
+CLAUDE.md

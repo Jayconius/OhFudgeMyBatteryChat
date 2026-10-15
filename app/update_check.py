@@ -1,6 +1,8 @@
 """Optional GitHub-release update check: a single outbound HTTPS request to
 api.github.com, made only when the user has opted in (AppConfig.check_for_
-updates). No other part of this app makes network calls of any kind.
+updates). The app's only other network use is also user-started: linking
+Twitch (twitch_auth / twitch_chat) and downloading a companion tool after
+the user clicks Yes (companion.py).
 """
 import json
 import re
@@ -38,7 +40,9 @@ def check_latest(current_version: str):
             data = json.loads(resp.read().decode("utf-8"))
         tag = data.get("tag_name", "")
         url = data.get("html_url") or RELEASES_URL
-        if tag and _is_newer(tag, current_version):
+        # Only the main app's own tags (v1.3.1) count - never a companion
+        # tool's (simulator-v2.0.0) if one is ever marked Latest by mistake.
+        if tag and re.match(r"^v\d", tag) and _is_newer(tag, current_version):
             return tag, url
     except Exception:
         pass

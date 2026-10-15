@@ -29,7 +29,7 @@ Votre casque, vos manettes et vos trackers affichent leur **batterie en direct s
 | | |
 |---|---|
 | 💿 **[Oh Fudge, My Battery Chat!](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/latest)** | L'application. Un seul exe, rien à installer. |
-| 🎙️ **[Oh Fudge VR Macro App](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/macros-v1.0.0)** | Facultatif. De gros boutons de coupure du micro dans une petite fenêtre à épingler en VR. |
+| 🎙️ **[Oh Fudge VR Macro App](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/macros-v1.0.1)** | Facultatif. De gros boutons de coupure du micro dans une petite fenêtre à épingler en VR. |
 | 🧪 **[Demo Simulator](https://github.com/Jayconius/OhFudgeMyBatteryChat/releases/tag/simulator-v2.0.0)** | Facultatif. De faux appareils et micros, pour essayer sans casque. |
 
 > [!NOTE]
@@ -150,6 +150,7 @@ Une fois ajoutée, elle reste synchronisée toute seule : ajouter, modifier ou s
 - Certains appareils ne signalent leur batterie que par à-coups et peuvent afficher **« n/a »** jusqu'à un redémarrage ou une batterie vraiment faible. C'est le pilote de l'appareil, pas un bug ici.
 - Les fonctions micro, tracking perdu et casque retiré sont nouvelles. Elles sont testées avec le Simulateur de démo (et un micro sans fil) ; le tracking et la détection du casque ne sont pas encore confirmés sur du vrai matériel - vos retours sont les bienvenus !
 - Raccourcis : un autre programme utilisant la même combinaison l'emporte, certains jeux bloquent les raccourcis globaux, et Verr. num. doit être activé pour les touches du pavé numérique.
+- Si quelque chose ne va pas, l'application vous le dit et enregistre les détails dans `error.log`, dans son dossier `Data` - joignez-le à vos rapports de bug. Vos réglages sont sauvegardés dans `config.json.bak` à chaque enregistrement.
 
 ## 🛠️ Le compiler soi-même
 
@@ -160,6 +161,8 @@ pip install -r requirements.txt
 pyinstaller --onefile --windowed --name "OhFudgeMyBatteryChat" --collect-all openvr --collect-all pycaw --collect-all comtypes --add-data "app/fonts;fonts" --add-data "assets;device_icons" main.py
 pyinstaller --onefile --windowed --name "OhFudgeVRMacroApp" --paths . tools/vr_macro_app.py
 ```
+
+Pour simplement la lancer depuis le code source (sans compiler), double-cliquez sur `run_dev.bat` ; `run_dev_simulator.bat` lance le Simulateur de démo à côté. La version de développement utilise son propre dossier `Data` dans le projet et affiche « (dev) » dans son titre.
 
 ## 📄 Licence
 

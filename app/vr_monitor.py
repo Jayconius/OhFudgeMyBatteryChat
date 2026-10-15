@@ -43,6 +43,10 @@ CLASS_NAMES = {
 } if openvr else {}
 
 
+class SteamVRQuit(Exception):
+    """SteamVR announced it is closing (VREvent_Quit)."""
+
+
 @dataclass
 class DeviceState:
     serial: str
@@ -188,9 +192,30 @@ class VRMonitor:
             )
         return devices
 
+    def _check_quit(self, vr):
+        """Reads SteamVR's event queue. When SteamVR is closing it sends a
+        Quit event: acknowledge it (so SteamVR doesn't wait on this app) and
+        raise, so _run marks SteamVR disconnected and goes back to waiting
+        for it - otherwise the calls below just keep returning "nothing
+        connected" and SteamVR would never look closed."""
+        event = openvr.VREvent_t()
+        for _ in range(64):  # drain, but never spin forever
+            try:
+                if not vr.pollNextEvent(event):
+                    return
+            except Exception:
+                return
+            if event.eventType == openvr.VREvent_Quit:
+                try:
+                    vr.acknowledgeQuit_Exiting()
+                except Exception:
+                    pass
+                raise SteamVRQuit()
+
     def _poll_once(self):
         devices: Dict[str, DeviceState] = {}
         vr = self._vr_system
+        self._check_quit(vr)
         try:
             # One call covers every device index - eTrackingResult per pose
             # is how OpenVR reports a device having lost tracking (out of
@@ -300,7 +325,8 @@ class VRMonitor:
             except Exception as exc:
                 with self._lock:
                     self._snapshot.steamvr_connected = False
-                    self._snapshot.error = f"Lost connection to SteamVR ({exc})"
+                    self._snapshot.devices = {}
+                    self._snapshot.error = "SteamVR was closed" if isinstance(exc, SteamVRQuit) else f"Lost connection to SteamVR ({exc})"
                     self._snapshot.simulated = False
                 self._shutdown_openvr()
             self._stop.wait(self.poll_interval_sec)
